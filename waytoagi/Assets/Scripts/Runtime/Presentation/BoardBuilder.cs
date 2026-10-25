@@ -83,7 +83,6 @@ namespace Pachinko
 
             BuildPins(refs.Playfield);
             BuildBaffles(refs.Playfield, config);
-            BuildBottomRamps(refs.Playfield);
 
             BuildWorldLabels(refs, camera);
             BuildHoles(refs, config);
@@ -327,14 +326,6 @@ namespace Pachinko
             baffle.Initialize(config.baffle.amplitude, config.baffle.period, phase);
         }
 
-        private static void BuildBottomRamps(Transform parent)
-        {
-            CreateRail(parent, "LeftFunnel", new Vector2(-3.43f, -3.30f), new Vector2(-2.95f, -4.33f), 0.16f, true,
-                Theme.Hex("#C68B4A"), 9, 0f);
-            CreateRail(parent, "RightFunnel", new Vector2(3.43f, -3.30f), new Vector2(2.95f, -4.33f), 0.16f, true,
-                Theme.Hex("#C68B4A"), 9, 0f);
-        }
-
         private static void BuildWorldLabels(BoardRefs refs, Camera camera)
         {
             var go = new GameObject("WorldLabels", typeof(RectTransform));
@@ -362,6 +353,8 @@ namespace Pachinko
         {
             // V3 策划案 5.2 明确把“三个奖励洞（×1/1000、×3/5000、×5/20000）”标为废案，
             // 并要求采用原有设计，因此这里保留 V2 的 8 洞布局（4 奖励洞 + 4 空穴）。
+            // 配置中的 8 个位置是固定洞位，奖励/空穴只是模板；
+            // 实际分布由 HoleRandomizer 在每次齐射前重新洗牌。
             var holeRoot = new GameObject("Holes").transform;
             holeRoot.SetParent(refs.Root, false);
             refs.Holes = new RewardHole[config.holes.Length];
@@ -370,7 +363,7 @@ namespace Pachinko
             float xSpan = holeCount > 1 ? config.holes[holeCount - 1].positionX - config.holes[0].positionX : 1.18f;
             float bayStep = holeCount > 1 ? Mathf.Abs(xSpan) / (holeCount - 1) : 1.18f;
             // 八个洞全部收在发射道隔板左侧的台面内；洞距约 0.73，洞宽约 0.67。
-            // 这样 8 号空穴不会再落在弹簧/发射道下方，台面里也没有通往弹簧下方的洞。
+            // 这样 8 号洞位不会再落在弹簧/发射道下方，台面里也没有通往弹簧下方的洞。
             float bayWidth = Mathf.Clamp(bayStep - 0.06f, 0.60f, 2.4f);
             float ringSize = Mathf.Clamp(bayWidth * 0.86f, 0.62f, 1.28f);
             float mouthSize = Mathf.Clamp(bayWidth * 0.72f, 0.50f, 1.10f);
@@ -379,40 +372,64 @@ namespace Pachinko
 
             for (int i = 0; i < holeCount; i++)
             {
-                var hole = config.holes[i];
-                float x = hole.positionX;
-                var color = Theme.Hex(hole.color);
-                bool reward = hole.HasReward;
-                var ringColor = reward ? Theme.Darken(color, 0.06f) : Theme.Hex("#5B5148");
+                var template = config.holes[i];
+                float x = template.positionX;
+                var color = Theme.Hex(template.color);
+                bool reward = template.HasReward;
 
-                Theme.RoundedRect(holeRoot, $"Bay_{i}", new Vector2(x, -4.99f), new Vector2(bayWidth, 1.10f),
+                // 洞位自己的 id / 名称 / 坐标保持不变；奖励属性由 HoleRandomizer 复制进来。
+                var slotDef = new HoleDef
+                {
+                    id = template.id,
+                    displayName = template.displayName,
+                    multiplier = template.multiplier,
+                    basePoints = template.basePoints,
+                    color = template.color,
+                    positionX = x,
+                    noReward = template.noReward
+                };
+
+                var bay = Theme.RoundedRect(holeRoot, $"Bay_{i}", new Vector2(x, -4.99f), new Vector2(bayWidth, 1.10f),
                     color.Alpha(reward ? 0.16f : 0.07f), 16, 2);
-                Theme.RoundedRect(holeRoot, $"BayInner_{i}", new Vector2(x, -5.07f), new Vector2(bayWidth - 0.08f, 0.82f),
+                var bayInner = Theme.RoundedRect(holeRoot, $"BayInner_{i}", new Vector2(x, -5.07f), new Vector2(bayWidth - 0.08f, 0.82f),
                     Theme.Ink.Alpha(0.075f), 14, 3);
-                Theme.RoundedRect(holeRoot, $"BayEdge_{i}", new Vector2(x, -4.42f), new Vector2(bayWidth - 0.10f, 0.045f),
+                var bayEdge = Theme.RoundedRect(holeRoot, $"BayEdge_{i}", new Vector2(x, -4.42f), new Vector2(bayWidth - 0.10f, 0.045f),
                     color.Alpha(reward ? 0.65f : 0.28f), 3, 6);
 
-                SpriteRenderer glow = null;
-                if (reward)
-                {
-                    glow = Theme.SpriteObject(holeRoot, $"HoleGlow_{i}", Theme.Glow, color.Alpha(0.3f), 5, new Vector2(x, -4.82f));
-                    SetSimpleDiameter(glow, Mathf.Min(2.15f, bayWidth * 1.75f));
-                }
-                Theme.CircleObject(holeRoot, $"HoleRing_{i}", new Vector2(x, BoardGeometry.HoleCenterY), ringSize, ringColor, 8);
-                Theme.CircleObject(holeRoot, $"HoleMouth_{i}", new Vector2(x, BoardGeometry.HoleCenterY), mouthSize, Theme.Ink, 9);
-                Theme.CircleObject(holeRoot, $"HoleInner_{i}", new Vector2(x, BoardGeometry.HoleCenterY), innerSize, Theme.Hex("#1D130D"), 10);
-                Theme.CircleObject(holeRoot, $"HoleSheen_{i}", new Vector2(x - bayWidth * 0.11f, BoardGeometry.HoleCenterY + bayWidth * 0.14f),
+                // 光晕先全部创建，HoleVisual 会根据当前是否为奖励洞决定显隐。
+                var glow = Theme.SpriteObject(holeRoot, $"HoleGlow_{i}", Theme.Glow, color.Alpha(0.3f), 5, new Vector2(x, -4.82f));
+                SetSimpleDiameter(glow, Mathf.Min(2.15f, bayWidth * 1.75f));
+                var ring = Theme.CircleObject(holeRoot, $"HoleRing_{i}", new Vector2(x, BoardGeometry.HoleCenterY), ringSize,
+                    reward ? Theme.Darken(color, 0.06f) : Theme.Hex("#5B5148"), 8);
+                var mouth = Theme.CircleObject(holeRoot, $"HoleMouth_{i}", new Vector2(x, BoardGeometry.HoleCenterY), mouthSize, Theme.Ink, 9);
+                var inner = Theme.CircleObject(holeRoot, $"HoleInner_{i}", new Vector2(x, BoardGeometry.HoleCenterY), innerSize, Theme.Hex("#1D130D"), 10);
+                var sheen = Theme.CircleObject(holeRoot, $"HoleSheen_{i}", new Vector2(x - bayWidth * 0.11f, BoardGeometry.HoleCenterY + bayWidth * 0.14f),
                     Mathf.Max(0.12f, bayWidth * 0.16f), color.Alpha(reward ? 0.28f : 0.12f), 11);
 
-                UIFactory.Label(refs.WorldRoot, $"HoleNumber_{i}", (i + 1).ToString(), 26,
+                var numberLabel = UIFactory.Label(refs.WorldRoot, $"HoleNumber_{i}", (i + 1).ToString(), 26,
                     Theme.Cream.Alpha(reward ? 0.88f : 0.42f), TextAnchor.MiddleCenter, UIFactory.Center,
                     new Vector2(x * 100f, BoardGeometry.HoleCenterY * 100f), new Vector2(50f, 40f), true);
-                UIFactory.Image(refs.WorldRoot, $"HolePill_{i}", Theme.Rounded(12),
+                var pill = UIFactory.Image(refs.WorldRoot, $"HolePill_{i}", Theme.Rounded(12),
                     Theme.Ink.Alpha(reward ? 0.9f : 0.4f), UIFactory.Center, UIFactory.Center,
                     new Vector2(x * 100f, -540f), new Vector2(labelWidth, 28f));
-                var label = UIFactory.Label(refs.WorldRoot, $"HoleLabel_{i}", "", 13,
+                var pointsLabel = UIFactory.Label(refs.WorldRoot, $"HoleLabel_{i}", "", 13,
                     Theme.Cream.Alpha(reward ? 1f : 0.62f), TextAnchor.MiddleCenter,
                     UIFactory.Center, new Vector2(x * 100f, -540f), new Vector2(labelWidth, 28f), true);
+
+                var visual = new HoleVisual
+                {
+                    Bay = bay,
+                    BayInner = bayInner,
+                    BayEdge = bayEdge,
+                    Glow = glow,
+                    Ring = ring,
+                    Mouth = mouth,
+                    Inner = inner,
+                    Sheen = sheen,
+                    NumberLabel = numberLabel,
+                    PointsLabel = pointsLabel,
+                    Pill = pill
+                };
 
                 var trigger = new GameObject($"HoleTrigger_{i}");
                 trigger.transform.SetParent(holeRoot, false);
@@ -421,7 +438,7 @@ namespace Pachinko
                 collider.isTrigger = true;
                 collider.size = new Vector2(bayWidth, 1.16f);
                 var rewardHole = trigger.AddComponent<RewardHole>();
-                rewardHole.Initialize(hole, hole.basePoints, label, glow);
+                rewardHole.Initialize(slotDef, x, visual);
                 refs.Holes[i] = rewardHole;
             }
 
@@ -430,6 +447,9 @@ namespace Pachinko
                 float boundary = (config.holes[i].positionX + config.holes[i + 1].positionX) * 0.5f;
                 Theme.RoundedRect(holeRoot, $"Divider_{i}", new Vector2(boundary, -5.02f), new Vector2(0.03f, 1.18f), Theme.Ink.Alpha(0.2f), 2, 4);
             }
+
+            // 开场先建立一组随机分布；之后每次 BeginVolley 会再次重排。
+            HoleRandomizer.Redistribute(refs.Holes, config);
         }
 
         private static GameObject CreateRail(Transform parent, string name, Vector2 a, Vector2 b, float thickness, bool collider,

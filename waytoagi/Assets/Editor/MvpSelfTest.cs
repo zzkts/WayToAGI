@@ -25,6 +25,7 @@ namespace PachinkoEditor
                 config.Validate();
 
                 ConfigTest(config);
+                HoleRandomizationTest(config);
                 AudioTest();
                 ScoreTest(config);
                 ComboResetTest(config);
@@ -69,12 +70,10 @@ namespace PachinkoEditor
 
             Check("配置有八个洞", config.holes != null && config.holes.Length == 8);
             Check("八个洞全部位于发射道隔板左侧", config.holes[7].positionX < BoardGeometry.LauncherWallX - 0.15f);
-            Check("奖励洞与空穴 1:1 且交替排列",
+            Check("配置模板为 4 奖励洞 + 4 空穴",
                 config.GetRewardHoles().Length == 4 &&
-                config.holes[0].HasReward && !config.holes[1].HasReward &&
-                config.holes[2].HasReward && !config.holes[3].HasReward &&
-                config.holes[4].HasReward && !config.holes[5].HasReward &&
-                config.holes[6].HasReward && !config.holes[7].HasReward);
+                !config.holes[1].HasReward && !config.holes[3].HasReward &&
+                !config.holes[5].HasReward && !config.holes[7].HasReward);
             Check("四奖励洞倍率为 1/3/8/12",
                 config.holes[0].multiplier == 1 && config.holes[2].multiplier == 3 &&
                 config.holes[4].multiplier == 8 && config.holes[6].multiplier == 12);
@@ -100,6 +99,43 @@ namespace PachinkoEditor
             Check("挡板：移除 12000 / 幅度 120px / 周期 2 秒", config.baffle.reduceCost == 12000 &&
                 Mathf.Approximately(config.baffle.amplitude, 1.2f) &&
                 Mathf.Approximately(config.baffle.period, 2f));
+        }
+
+        private static void HoleRandomizationTest(GameConfig config)
+        {
+            int slotCount = config.holes.Length;
+            int rewardCount = config.GetRewardHoles().Length;
+            bool countsOk = true;
+            bool varied = false;
+            int firstMask = -1;
+            var slotHits = new int[slotCount];
+
+            for (int seed = 0; seed < 128; seed++)
+            {
+                bool[] selected = HoleRandomizer.SelectRewardSlots(slotCount, rewardCount, new System.Random(seed));
+                int count = 0;
+                int mask = 0;
+                for (int i = 0; i < selected.Length; i++)
+                {
+                    if (!selected[i]) continue;
+                    count++;
+                    mask |= 1 << i;
+                    slotHits[i]++;
+                }
+                if (count != rewardCount) countsOk = false;
+                if (seed == 0) firstMask = mask;
+                else if (mask != firstMask) varied = true;
+            }
+
+            bool allSlotsReachable = true;
+            for (int i = 0; i < slotHits.Length; i++)
+            {
+                if (slotHits[i] == 0) allSlotsReachable = false;
+            }
+
+            Check("每次齐射重新分布恰好 4 个奖励洞", rewardCount == 4 && countsOk);
+            Check("随机分布会改变奖励洞位置", varied);
+            Check("8 个洞位都可能成为奖励洞", allSlotsReachable);
         }
 
         private static void AudioTest()

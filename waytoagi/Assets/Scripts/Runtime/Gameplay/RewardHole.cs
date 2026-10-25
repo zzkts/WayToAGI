@@ -1,6 +1,5 @@
 using System;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace Pachinko
 {
@@ -8,22 +7,32 @@ namespace Pachinko
     public class RewardHole : MonoBehaviour
     {
         public HoleDef Def { get; private set; }
+        public float SlotX { get; private set; }
         public int CurrentPoints { get; private set; }
         public bool HasReward => Def != null && Def.HasReward;
         public event Action<RewardHole, MarbleController> Hit;
 
-        private Text _pointsLabel;
+        private HoleVisual _visual;
         private SpriteRenderer _glow;
         private Color _glowColor;
         private bool _armed;
 
-        public void Initialize(HoleDef def, int points, Text pointsLabel, SpriteRenderer glow)
+        public void Initialize(HoleDef def, float slotX, HoleVisual visual)
         {
             Def = def;
-            CurrentPoints = HasReward ? points : 0;
-            _pointsLabel = pointsLabel;
-            _glow = glow;
-            _glowColor = glow != null ? glow.color : Theme.Orange;
+            SlotX = slotX;
+            _visual = visual;
+            ApplyDefinition();
+        }
+
+        /// <summary>奖励洞重新分布后刷新当前洞位的倍率、颜色、光晕与积分标签。</summary>
+        public void ApplyDefinition()
+        {
+            if (Def == null) return;
+            CurrentPoints = HasReward ? Mathf.Max(0, Def.basePoints) : 0;
+            if (_visual != null) _visual.Apply(Def);
+            _glow = _visual != null ? _visual.Glow : null;
+            _glowColor = _glow != null ? _glow.color : Theme.Orange;
             SetPoints(CurrentPoints);
         }
 
@@ -40,9 +49,9 @@ namespace Pachinko
         public void SetPoints(int points)
         {
             CurrentPoints = HasReward ? Mathf.Max(0, points) : 0;
-            if (_pointsLabel != null)
+            if (_visual != null && _visual.PointsLabel != null)
             {
-                _pointsLabel.text = HasReward
+                _visual.PointsLabel.text = HasReward
                     ? $"×{Def.multiplier} · {CurrentPoints}"
                     : "空穴";
             }
@@ -50,7 +59,7 @@ namespace Pachinko
 
         private void Update()
         {
-            if (_glow == null) return;
+            if (_glow == null || !_glow.gameObject.activeSelf) return;
             float pulse = 0.72f + Mathf.Sin(Time.time * 1.8f + transform.position.x) * 0.12f;
             _glow.color = _glowColor.Alpha(pulse * 0.32f);
         }

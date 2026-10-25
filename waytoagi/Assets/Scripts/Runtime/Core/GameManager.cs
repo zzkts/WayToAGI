@@ -167,6 +167,9 @@ namespace Pachinko
             _activeMarbles.Clear();
             _resolvedMarbles.Clear();
 
+            // 每次齐射开始前重新分布底部奖励洞：固定 8 个洞位，4 个奖励模板随机落位。
+            HoleRandomizer.Redistribute(Board.Holes, Config);
+
             var enchant = ActiveEnchant;
             for (int i = 0; i < _marbles.Length; i++)
             {
@@ -319,8 +322,8 @@ namespace Pachinko
             AudioManager.Play($"combo_{Mathf.Clamp(result.comboCount, 1, 5):00}");
 
             EvaluateGoal();
-            marble.CaptureInto(new Vector2(hole.Def.positionX, BoardGeometry.HoleCenterY));
-            Hud.PlayScorePopup(result, new Vector3(hole.Def.positionX, BoardGeometry.HoleCenterY + 0.9f, 0f));
+            marble.CaptureInto(new Vector2(hole.SlotX, BoardGeometry.HoleCenterY));
+            Hud.PlayScorePopup(result, new Vector3(hole.SlotX, BoardGeometry.HoleCenterY + 0.9f, 0f));
             Hud.RefreshAll();
 
             if (VolleyResolved >= VolleyTotalBalls) StartCoroutine(FinishVolley());
@@ -333,8 +336,8 @@ namespace Pachinko
             VolleyResolved++;
             VolleyHits++;
             Score.RegisterMiss();
-            marble.CaptureInto(new Vector2(hole.Def.positionX, BoardGeometry.HoleCenterY));
-            Hud.PlayNoRewardPopup(hole.Def, new Vector3(hole.Def.positionX, BoardGeometry.HoleCenterY + 0.9f, 0f));
+            marble.CaptureInto(new Vector2(hole.SlotX, BoardGeometry.HoleCenterY));
+            Hud.PlayNoRewardPopup(hole.Def, new Vector3(hole.SlotX, BoardGeometry.HoleCenterY + 0.9f, 0f));
             Hud.RefreshAll();
             Debug.Log($"[Hole] {hole.Def.id} 空穴，无奖励，连击中断 resolved={VolleyResolved}/{VolleyTotalBalls}");
 
