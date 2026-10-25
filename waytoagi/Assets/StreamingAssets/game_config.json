@@ -1,0 +1,175 @@
+{
+  "version": "2.1",
+  "physics": {
+    "gravity": 9.8,
+    "pinBounciness": 0.85,
+    "ballBounciness": 0.45,
+    "wallBounciness": 0.35,
+    "barBounciness": 0.7,
+    "plungerBounciness": 0.6,
+    "ballMass": 0.2,
+    "plungerMass": 5.0,
+    "ballRadius": 0.1
+  },
+  "launch": {
+    "minBallSpeed": 6.0,
+    "maxBallSpeed": 14.0,
+    "maxPullWorld": 1.2,
+    "plungerSpeedFactor": 0.64,
+    "plungerReturnDelay": 0.35
+  },
+  "tilt": {
+    "deadZone": 0.05,
+    "fullScale": 0.35,
+    "maxHorizontalGravity": 6.0,
+    "smoothing": 10.0,
+    "sensorSmoothing": 12.0,
+    "invert": false
+  },
+  "economy": {
+    "startingCredits": 2000,
+    "maxBallsPerShopVisit": 5,
+    "freeStandardBallsPerPhase": 3
+  },
+  "balls": [
+    {
+      "id": "ball_01",
+      "displayName": "标准弹珠",
+      "description": "经典白色，每个发射阶段免费装填 3 颗",
+      "multiplier": 1,
+      "color": "#FFF8E8",
+      "outlineColor": "#5C4635",
+      "unlockPrice": 0,
+      "unitPrice": 0,
+      "alwaysAvailable": true
+    },
+    {
+      "id": "ball_02",
+      "displayName": "强化弹珠",
+      "description": "得分倍率 ×2，性价比首选",
+      "multiplier": 2,
+      "color": "#E85C45",
+      "outlineColor": "#6B241B",
+      "unlockPrice": 800,
+      "unitPrice": 500,
+      "alwaysAvailable": false
+    },
+    {
+      "id": "ball_03",
+      "displayName": "稀有弹珠",
+      "description": "得分倍率 ×3，冲高分首选",
+      "multiplier": 3,
+      "color": "#4C86D9",
+      "outlineColor": "#1A3E70",
+      "unlockPrice": 2500,
+      "unitPrice": 1000,
+      "alwaysAvailable": false
+    }
+  ],
+  "holes": [
+    {
+      "id": "hole_01",
+      "displayName": "1 号洞",
+      "multiplier": 1,
+      "basePoints": 50,
+      "upgradeBasePrice": 300,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 25,
+      "maxUpgradeLevel": 3,
+      "color": "#E8C15A",
+      "positionX": -2.975,
+      "noReward": false
+    },
+    {
+      "id": "hole_02",
+      "displayName": "2 号洞",
+      "multiplier": 0,
+      "basePoints": 0,
+      "upgradeBasePrice": 0,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 0,
+      "maxUpgradeLevel": 0,
+      "color": "#6E655C",
+      "positionX": -2.246,
+      "noReward": true
+    },
+    {
+      "id": "hole_03",
+      "displayName": "3 号洞",
+      "multiplier": 3,
+      "basePoints": 120,
+      "upgradeBasePrice": 500,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 60,
+      "maxUpgradeLevel": 3,
+      "color": "#DF8437",
+      "positionX": -1.518,
+      "noReward": false
+    },
+    {
+      "id": "hole_04",
+      "displayName": "4 号洞",
+      "multiplier": 0,
+      "basePoints": 0,
+      "upgradeBasePrice": 0,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 0,
+      "maxUpgradeLevel": 0,
+      "color": "#6E655C",
+      "positionX": -0.789,
+      "noReward": true
+    },
+    {
+      "id": "hole_05",
+      "displayName": "5 号洞",
+      "multiplier": 8,
+      "basePoints": 260,
+      "upgradeBasePrice": 850,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 150,
+      "maxUpgradeLevel": 3,
+      "color": "#C84B3D",
+      "positionX": -0.061,
+      "noReward": false
+    },
+    {
+      "id": "hole_06",
+      "displayName": "6 号洞",
+      "multiplier": 0,
+      "basePoints": 0,
+      "upgradeBasePrice": 0,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 0,
+      "maxUpgradeLevel": 0,
+      "color": "#6E655C",
+      "positionX": 0.668,
+      "noReward": true
+    },
+    {
+      "id": "hole_07",
+      "displayName": "7 号洞",
+      "multiplier": 12,
+      "basePoints": 300,
+      "upgradeBasePrice": 1200,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 200,
+      "maxUpgradeLevel": 3,
+      "color": "#9F3038",
+      "positionX": 1.396,
+      "noReward": false
+    },
+    {
+      "id": "hole_08",
+      "displayName": "8 号洞",
+      "multiplier": 0,
+      "basePoints": 0,
+      "upgradeBasePrice": 0,
+      "upgradePriceGrowth": 1.6,
+      "upgradePointsPerLevel": 0,
+      "maxUpgradeLevel": 0,
+      "color": "#6E655C",
+      "positionX": 2.125,
+      "noReward": true
+    }
+  ]
+}
