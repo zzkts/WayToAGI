@@ -70,7 +70,7 @@ namespace Pachinko
                 new Vector2(0f, -70f), new Vector2(880f, 366f), Theme.Hex("#21160F").Alpha(0.78f), 26, true, 8f);
             UIFactory.RoundedRectOnUI(instructions, "Accent", new Vector2(34f, -24f), new Vector2(6f, 312f), Theme.Amber, 3);
             UIFactory.Label(instructions, "Line1",
-                $"<color=#E9A93E>① 无限白球</color>：标准弹珠不购买、不消耗库存，每次齐射装填 {_config.VolleySize} 颗", 20, Theme.Cream,
+                $"<color=#E9A93E>① 无限白球</color>：标准弹珠不消耗库存，每次齐射装填 {_game.Shop.CurrentVolleySize} 颗，可在兑换中升级", 20, Theme.Cream,
                 TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -24f), new Vector2(790f, 56f));
             UIFactory.Label(instructions, "Line2",
                 "<color=#57B4BC>② 动态循环</color>：每次循环的齐射次数不固定，循环越高次数越多", 20, Theme.Cream,
@@ -82,7 +82,7 @@ namespace Pachinko
                 "<color=#C84B3D>④ 同洞连击</color>：连续命中同一奖励洞 ×2 / ×4 / ×8；换洞、空穴、漏球归零", 20, Theme.Cream,
                 TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -216f), new Vector2(790f, 56f));
             UIFactory.Label(instructions, "Line5",
-                $"<color=#E9A93E>⑤ 兑换与通关</color>：每循环结束自动兑换附魔 / 引爆 / 挡板；累计 {_game.GoalScore:N0} 通关", 20, Theme.Cream,
+                $"<color=#E9A93E>⑤ 兑换与通关</color>：每循环结束自动兑换附魔 / 额外弹珠 / 引爆 / 挡板；累计 {_game.GoalScore:N0} 通关", 20, Theme.Cream,
                 TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -280f), new Vector2(790f, 56f));
 
             UIFactory.Label(root, "DesktopHint", "电脑试玩：鼠标拖动推杆  ·  A / D 或 ← / → 倾斜（或按住屏幕左右侧）", 17,
@@ -262,7 +262,7 @@ namespace Pachinko
                 new Vector2(0f, -98f), new Vector2(360f, 60f), Theme.Red, Theme.Cream, 21, OnResetClicked, 18);
 
             UIFactory.Label(card, "DangerNote",
-                "重置游戏会清空累计得分、可用积分、循环进度、最高记录、\n附魔 / 引爆 / 挡板兑换和校准设置，等同重新开始游戏。",
+                "重置游戏会清空累计得分、可用积分、循环进度、最高记录、\n附魔 / 额外弹珠 / 引爆 / 挡板兑换和校准设置，等同重新开始游戏。",
                 14, Theme.InkSoft, TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, -166f), new Vector2(700f, 50f));
 
             _settingsBgmButton = UIFactory.TextButton(card, "BgmToggle", "音乐 BGM：开", UIFactory.Center, UIFactory.Center,

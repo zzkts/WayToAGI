@@ -77,7 +77,7 @@ namespace Pachinko
             {
                 yield return Capture("loop_exchange");
 
-                // 用 QA 积分展示三项永久兑换全部可用时的状态。
+                // 用 QA 积分展示四项永久兑换全部可用时的状态。
                 _game.DebugGrantCredits(200000);
                 _game.HandleUnlockEnchant();
                 _game.HandleUnlockEnchant();

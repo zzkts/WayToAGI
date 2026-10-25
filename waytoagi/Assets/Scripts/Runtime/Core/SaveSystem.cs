@@ -4,13 +4,13 @@ using UnityEngine;
 namespace Pachinko
 {
     /// <summary>
-    /// V5 存档：动态循环进度 + 附魔/引爆/挡板三项永久兑换 + 倾斜校准。
+    /// V6 存档：动态循环进度 + 附魔/额外弹珠/引爆/挡板兑换 + 齐射弹珠升级 + 倾斜校准。
     /// 弹珠库存、洞口升级、旧附魔与技能等级等 V2 字段已删除。
     /// </summary>
     [Serializable]
     public class SaveData
     {
-        public int version = 5;
+        public int version = 6;
         public int totalScore;
         public int credits;
         public int bestSingleScore;
@@ -19,6 +19,7 @@ namespace Pachinko
         public int loopIndex = 1;
         public bool goalReached;
         public int enchantTier;
+        public int extraMarblesPerVolley;
         public bool explosionUnlocked;
         public int baffleCount = 1;
         public float tiltCalibration;
@@ -28,7 +29,7 @@ namespace Pachinko
         {
             var data = new SaveData
             {
-                version = 5,
+                version = 6,
                 totalScore = 0,
                 credits = Mathf.Max(0, config.economy.startingCredits),
                 bestSingleScore = 0,
@@ -37,6 +38,7 @@ namespace Pachinko
                 loopIndex = 1,
                 goalReached = false,
                 enchantTier = 0,
+                extraMarblesPerVolley = 0,
                 explosionUnlocked = false,
                 baffleCount = Mathf.Clamp(config.economy.startingBaffleCount, 0, config.MaxBaffleCount),
                 tiltCalibration = 0f,
@@ -61,6 +63,12 @@ namespace Pachinko
                 goalReached = false;
             }
 
+            if (version < 6)
+            {
+                version = 6;
+                extraMarblesPerVolley = 0;
+            }
+
             totalScore = Mathf.Max(0, totalScore);
             credits = Mathf.Max(0, credits);
             bestSingleScore = Mathf.Max(0, bestSingleScore);
@@ -68,6 +76,8 @@ namespace Pachinko
             bestLoopScore = Mathf.Max(0, bestLoopScore);
             loopIndex = Mathf.Max(1, loopIndex);
             enchantTier = Mathf.Clamp(enchantTier, 0, config != null ? config.MaxEnchantTier : 0);
+            int baseVolleySize = config != null ? config.VolleySize : 3;
+            extraMarblesPerVolley = Mathf.Clamp(extraMarblesPerVolley, 0, GameConfig.MaxVolleySize - baseVolleySize);
             baffleCount = Mathf.Clamp(baffleCount, 0, config != null ? config.MaxBaffleCount : 0);
             if (config != null && config.loop != null && totalScore >= config.loop.goalScore)
             {
@@ -78,7 +88,7 @@ namespace Pachinko
 
     public static class SaveSystem
     {
-        // 沿用 V2 的键名，确保旧存档可以迁移到 V5，而不是静默丢失。
+        // 沿用 V2 的键名，确保旧存档可以迁移到 V6，而不是静默丢失。
         private const string PrefsKey = "pachinko_mvp_save_v2";
         private static bool _warned;
 

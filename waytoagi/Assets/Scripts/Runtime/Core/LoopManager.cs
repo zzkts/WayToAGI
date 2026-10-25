@@ -81,7 +81,7 @@ namespace Pachinko
             if (loopIndex <= settings.earlyUntilLoop) return settings.earlyThreshold;
             if (loopIndex <= settings.midUntilLoop) return settings.midThreshold;
 
-            // 第 11 循环开始进入递增段：11 → 20,000×1.3，12 → 20,000×1.3²。
+            // 超过中段后，以 midThreshold 为基数按 lateThresholdGrowth 逐循环递增。
             int steps = loopIndex - settings.midUntilLoop;
             double value = settings.midThreshold * Math.Pow(settings.lateThresholdGrowth, steps);
             return (int)Math.Min(int.MaxValue, Math.Round(value));

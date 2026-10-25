@@ -45,7 +45,7 @@ namespace Pachinko
     }
 
     /// <summary>
-    /// V3 取消弹珠购买与库存：标准弹珠无限供应，每次齐射固定装填若干颗。
+    /// V3 取消弹珠购买与库存：标准弹珠无限供应，每次齐射基础装填若干颗，可永久升级容量。
     /// 可用积分与累计得分同步累加（1:1），只有兑换会减少可用积分。
     /// </summary>
     [Serializable]
@@ -53,9 +53,11 @@ namespace Pachinko
     {
         public int startingCredits = 0;
         public int marblesPerVolley = 3;
+        public int extraMarbleBasePrice = 5000;
+        public float extraMarblePriceGrowth = 1.6f;
         public int startingBaffleCount = 1;
-        public int enchantBasePrice = 10000;
-        public float enchantPriceGrowth = 1.6f;
+        public int enchantBasePrice = 8000;
+        public float enchantPriceGrowth = 2.0f;
     }
 
     /// <summary>动态循环：每次循环的齐射次数随机，并随循环数缓慢增加。</summary>
@@ -66,18 +68,18 @@ namespace Pachinko
         public int maxVolleys = 3;
         public int maxVolleysCap = 6;
         public int growthEveryLoops = 4;
-        public int earlyThreshold = 5000;
-        public int earlyUntilLoop = 3;
-        public int midThreshold = 20000;
+        public int earlyThreshold = 3000;
+        public int earlyUntilLoop = 4;
+        public int midThreshold = 15000;
         public int midUntilLoop = 10;
-        public float lateThresholdGrowth = 1.3f;
+        public float lateThresholdGrowth = 1.08f;
         public int goalScore = 1000000;
     }
 
     [Serializable]
     public class ExplosionSettings
     {
-        public int unlockPrice = 50000;
+        public int unlockPrice = 30000;
         public int triggerCollisions = 10;
         /// <summary>世界单位；1 单位 = 100 设计像素，1.2 即 120px 半径。</summary>
         public float radius = 1.2f;
@@ -88,7 +90,7 @@ namespace Pachinko
     public class BaffleSettings
     {
         public int maxCount = 3;
-        public int reduceCost = 20000;
+        public int reduceCost = 12000;
         /// <summary>左右往返总幅度（世界单位）。1.2 = 120px，单侧位移为一半。</summary>
         public float amplitude = 1.2f;
         public float period = 2f;
@@ -136,6 +138,8 @@ namespace Pachinko
     [Serializable]
     public class GameConfig
     {
+        public const int MaxVolleySize = 16;
+
         public string version = "3.0";
         public PhysicsSettings physics = new PhysicsSettings();
         public LaunchSettings launch = new LaunchSettings();
@@ -148,7 +152,7 @@ namespace Pachinko
         public EnchantDef[] enchants;
         public HoleDef[] holes;
 
-        public int VolleySize => economy != null ? Mathf.Clamp(economy.marblesPerVolley, 1, 16) : 3;
+        public int VolleySize => economy != null ? Mathf.Clamp(economy.marblesPerVolley, 1, MaxVolleySize) : 3;
         public int MaxBaffleCount => baffle != null ? Mathf.Clamp(baffle.maxCount, 0, 3) : 0;
         public int MaxEnchantTier => enchants != null ? enchants.Length : 0;
 
@@ -179,7 +183,7 @@ namespace Pachinko
         /// <summary>第 tier 次附魔解锁的价格（tier 从 0 开始，对应第一档附魔）。</summary>
         public int EnchantPrice(int tier)
         {
-            if (economy == null) return 10000;
+            if (economy == null) return 8000;
             return Mathf.RoundToInt(economy.enchantBasePrice * Mathf.Pow(Mathf.Max(1f, economy.enchantPriceGrowth), Mathf.Max(0, tier)));
         }
 
@@ -222,7 +226,9 @@ namespace Pachinko
             tilt.sensorSmoothing = Mathf.Max(1f, tilt.sensorSmoothing);
 
             economy.startingCredits = Mathf.Max(0, economy.startingCredits);
-            economy.marblesPerVolley = Mathf.Clamp(economy.marblesPerVolley, 1, 16);
+            economy.marblesPerVolley = Mathf.Clamp(economy.marblesPerVolley, 1, MaxVolleySize);
+            economy.extraMarbleBasePrice = Mathf.Max(1, economy.extraMarbleBasePrice);
+            economy.extraMarblePriceGrowth = Mathf.Max(1f, economy.extraMarblePriceGrowth);
             economy.enchantBasePrice = Mathf.Max(1, economy.enchantBasePrice);
             economy.enchantPriceGrowth = Mathf.Max(1f, economy.enchantPriceGrowth);
 

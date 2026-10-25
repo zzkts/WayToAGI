@@ -29,31 +29,33 @@
   "economy": {
     "startingCredits": 0,
     "marblesPerVolley": 3,
+    "extraMarbleBasePrice": 5000,
+    "extraMarblePriceGrowth": 1.6,
     "startingBaffleCount": 1,
-    "enchantBasePrice": 10000,
-    "enchantPriceGrowth": 1.6
+    "enchantBasePrice": 8000,
+    "enchantPriceGrowth": 2.0
   },
   "loop": {
     "minVolleys": 2,
     "maxVolleys": 3,
     "maxVolleysCap": 6,
     "growthEveryLoops": 4,
-    "earlyThreshold": 5000,
-    "earlyUntilLoop": 3,
-    "midThreshold": 20000,
+    "earlyThreshold": 3000,
+    "earlyUntilLoop": 4,
+    "midThreshold": 15000,
     "midUntilLoop": 10,
-    "lateThresholdGrowth": 1.3,
+    "lateThresholdGrowth": 1.08,
     "goalScore": 1000000
   },
   "explosion": {
-    "unlockPrice": 50000,
+    "unlockPrice": 30000,
     "triggerCollisions": 10,
     "radius": 1.2,
     "force": 8.0
   },
   "baffle": {
     "maxCount": 3,
-    "reduceCost": 20000,
+    "reduceCost": 12000,
     "amplitude": 1.2,
     "period": 2.0
   },

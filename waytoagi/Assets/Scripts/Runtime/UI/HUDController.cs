@@ -202,10 +202,10 @@ namespace Pachinko
                 new Vector2(-24f, -160f), new Vector2(304f, 46f), Theme.Panel.Alpha(0.9f), 16, false);
             UIFactory.Label(magazinePanel, "MagazineLabel", "齐射", 13, Theme.Cream.Alpha(0.48f), TextAnchor.MiddleLeft,
                 UIFactory.TopLeft, new Vector2(14f, -11f), new Vector2(40f, 24f));
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < GameConfig.MaxVolleySize; i++)
             {
                 var pip = UIFactory.Circle(magazinePanel, "Pip" + i, Theme.InkSoft, UIFactory.TopLeft, UIFactory.TopLeft,
-                    new Vector2(60f + i * 16f, -17f), 12f);
+                    new Vector2(60f + i * 15f, -17f), 12f);
                 pip.raycastTarget = false;
                 pip.gameObject.SetActive(false);
                 _magazinePips.Add(pip);

@@ -31,7 +31,6 @@ namespace Pachinko
         private Color _fillColor = Theme.Cream;
         private bool _lostRaised;
         private float _lowSpeedTime;
-        private float _flightTime;
 
         private ExplosionSettings _explosion;
         private bool _explosionUnlocked;
@@ -125,7 +124,6 @@ namespace Pachinko
             IsInFlight = false;
             _lostRaised = false;
             _lowSpeedTime = 0f;
-            _flightTime = 0f;
             _collisionCount = 0;
             gameObject.SetActive(true);
             _body.simulated = true;
@@ -157,7 +155,6 @@ namespace Pachinko
             _body.WakeUp();
             IsInFlight = true;
             _lowSpeedTime = 0f;
-            _flightTime = 0f;
             if (_trail != null) _trail.emitting = true;
         }
 
@@ -280,7 +277,6 @@ namespace Pachinko
         {
             if (!IsInFlight || IsCaptured) return;
 
-            _flightTime += Time.deltaTime;
             if (_body.linearVelocity.sqrMagnitude < 0.0225f)
             {
                 _lowSpeedTime += Time.deltaTime;
@@ -303,7 +299,7 @@ namespace Pachinko
 
             Vector2 p = transform.position;
             bool outside = p.x < -6f || p.x > 6f || p.y < -6.8f || p.y > 8f;
-            if ((outside || _flightTime > 28f) && !_lostRaised)
+            if (outside && !_lostRaised)
             {
                 _lostRaised = true;
                 Lost?.Invoke();

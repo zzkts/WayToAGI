@@ -81,6 +81,7 @@ namespace PachinkoEditor
         [MenuItem("Pachinko/4. 构建 Android APK", priority = 4)]
         public static void BuildAndroid()
         {
+            ConfigureAndroidBuildEnvironment();
             EnsureAndroidSupport();
             EnsureAndroidActiveTarget();
             EnsureAndroidTools();
@@ -212,6 +213,36 @@ namespace PachinkoEditor
         }
 
         /// <summary>
+        /// 中文用户名会让 AGP 生成的 prefab .bat 在中文 TEMP 路径下被 cmd 按 GBK 解析，
+        /// 导致 'Eclipse' is not recognized。构建前把 TEMP/TMP 与 GRADLE_USER_HOME 指到纯英文目录，
+        /// 让从 Unity Hub 直接打开的编辑器也能完成 Android 构建。
+        /// </summary>
+        internal static void ConfigureAndroidBuildEnvironment()
+        {
+            const string root = @"D:\Android";
+            string temp = Path.Combine(root, "temp");
+            string gradleHome = Path.Combine(root, "gradle-home");
+            Directory.CreateDirectory(temp);
+            Directory.CreateDirectory(gradleHome);
+
+            Environment.SetEnvironmentVariable("TEMP", temp, EnvironmentVariableTarget.Process);
+            Environment.SetEnvironmentVariable("TMP", temp, EnvironmentVariableTarget.Process);
+            Environment.SetEnvironmentVariable("GRADLE_USER_HOME", gradleHome, EnvironmentVariableTarget.Process);
+
+            // GRADLE_USER_HOME 改变后，Gradle 会从这个目录读取 init.d；确保阿里云镜像脚本存在。
+            string initDir = Path.Combine(gradleHome, "init.d");
+            Directory.CreateDirectory(initDir);
+            string initScript = Path.Combine(initDir, "aliyun-mirrors.gradle");
+            if (!File.Exists(initScript))
+            {
+                string bundled = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Tools", "Android", "aliyun-mirrors.gradle"));
+                if (File.Exists(bundled)) File.Copy(bundled, initScript);
+            }
+
+            Debug.Log($"[BUILD] Android 构建环境：TEMP={temp}，GRADLE_USER_HOME={gradleHome}");
+        }
+
+        /// <summary>
         /// Android 主模块安装成功不代表 JDK / SDK / NDK 已安装。提前检查，避免构建到 Gradle
         /// 阶段才报 "JDK not found" 这类难以定位的错误。
         /// </summary>
@@ -338,6 +369,7 @@ namespace PachinkoEditor
         {
             if (report.summary.platform == BuildTarget.Android)
             {
+                MvpSceneBuilder.ConfigureAndroidBuildEnvironment();
                 MvpSceneBuilder.EnsureAndroidTools();
             }
         }

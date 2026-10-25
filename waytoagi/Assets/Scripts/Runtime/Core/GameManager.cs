@@ -148,7 +148,7 @@ namespace Pachinko
         private void BeginVolley()
         {
             _magazine.Clear();
-            _magazine.AddRange(MagazineBuilder.Build(Config));
+            _magazine.AddRange(MagazineBuilder.Build(Config, Shop.ExtraMarblesPerVolley));
             if (_magazine.Count == 0 && StandardBall != null) _magazine.Add(StandardBall);
             if (_magazine.Count > _marbles.Length)
             {
@@ -260,7 +260,8 @@ namespace Pachinko
 
         private IEnumerator VolleyTimeout()
         {
-            yield return new WaitForSeconds(15f);
+            // Final watchdog for a volley that remains unresolved after normal boundary checks.
+            yield return new WaitForSeconds(60f);
             if (State != GameState.BallFlight) yield break;
             Debug.LogWarning("[Volley] timeout: resolving all remaining balls as lost");
             var snapshot = new List<MarbleController>(_activeMarbles);
@@ -275,7 +276,7 @@ namespace Pachinko
                 marble.HideImmediate();
             }
             if (missed) Score.RegisterMiss();
-            Hud.ShowToast("齐射超时，未落洞的弹珠已收回");
+            Hud.ShowToast("弹珠长时间未结算，剩余弹珠已收回");
             Hud.RefreshAll();
             StartCoroutine(FinishVolley());
         }
@@ -469,6 +470,15 @@ namespace Pachinko
         {
             if (State != GameState.Exchange) return;
             var result = Shop.TryReduceBaffle();
+            if (result.success) AudioManager.Play("ui_unlock");
+            Hud.ShowToast(result.message);
+            Hud.RefreshAll();
+        }
+
+        public void HandleBuyExtraMarble()
+        {
+            if (State != GameState.Exchange) return;
+            var result = Shop.TryBuyExtraMarble();
             if (result.success) AudioManager.Play("ui_unlock");
             Hud.ShowToast(result.message);
             Hud.RefreshAll();

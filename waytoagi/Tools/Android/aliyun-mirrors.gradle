@@ -1,0 +1,28 @@
+// Prefer mainland-China Maven mirrors before the default repositories.
+// Unity's generated settings.gradle declares gradlePluginPortal/google/mavenCentral,
+// which are unreliable here; these mirrors are tried first.
+def mirrors = [
+    'https://maven.aliyun.com/repository/google',
+    'https://maven.aliyun.com/repository/public',
+    'https://maven.aliyun.com/repository/gradle-plugin',
+]
+
+beforeSettings { settings ->
+    settings.pluginManagement.repositories {
+        mirrors.each { u -> maven { url = u } }
+    }
+    settings.dependencyResolutionManagement.repositories {
+        mirrors.each { u -> maven { url = u } }
+    }
+}
+
+allprojects {
+    buildscript {
+        repositories {
+            mirrors.each { u -> maven { url = u } }
+        }
+    }
+    repositories {
+        mirrors.each { u -> maven { url = u } }
+    }
+}

@@ -27,10 +27,11 @@ namespace Pachinko
         private Text _shopFooterText;
         private UIButton _shopDoneButton;
         private ExchangeRowUI _enchantRow;
+        private ExchangeRowUI _marbleRow;
         private ExchangeRowUI _explosionRow;
         private ExchangeRowUI _baffleRow;
 
-        /// <summary>循环结束后的自动兑换面板：只保留附魔 / 引爆 / 减少挡板三项永久兑换。</summary>
+        /// <summary>循环结束后的自动兑换面板。</summary>
         private void BuildExchange()
         {
             var root = UIFactory.Stretch(_modalLayer, "ExchangeModal");
@@ -40,7 +41,7 @@ namespace Pachinko
             _shopRoot = root.gameObject;
 
             var panel = UIFactory.Panel(root, "ExchangePanel", UIFactory.Center, UIFactory.Center,
-                Vector2.zero, new Vector2(940f, 1140f), Theme.Panel, 34, true, 12f);
+                Vector2.zero, new Vector2(940f, 1240f), Theme.Panel, 34, true, 12f);
             UIFactory.Image(panel, "TopAccent", Theme.Rounded(3), Theme.Amber,
                 UIFactory.TopCenter, UIFactory.TopCenter, new Vector2(0f, -14f), new Vector2(120f, 6f)).raycastTarget = false;
 
@@ -69,17 +70,18 @@ namespace Pachinko
                 UIFactory.TopLeft, new Vector2(28f, -66f), new Vector2(790f, 82f));
 
             CreateSectionHeader(panel, "ExchangeHeader", "永久兑换 · 只消耗可用积分", 336f);
-            _enchantRow = BuildExchangeRow(panel, "Enchant", 386f, () => _game.HandleUnlockEnchant());
-            _explosionRow = BuildExchangeRow(panel, "Explosion", 548f, () => _game.HandleUnlockExplosion());
-            _baffleRow = BuildExchangeRow(panel, "Baffle", 710f, () => _game.HandleReduceBaffle());
+            _enchantRow = BuildExchangeRow(panel, "Enchant", 372f, () => _game.HandleUnlockEnchant());
+            _marbleRow = BuildExchangeRow(panel, "ExtraMarble", 522f, () => _game.HandleBuyExtraMarble());
+            _explosionRow = BuildExchangeRow(panel, "Explosion", 672f, () => _game.HandleUnlockExplosion());
+            _baffleRow = BuildExchangeRow(panel, "Baffle", 822f, () => _game.HandleReduceBaffle());
 
             _shopFooterText = UIFactory.Label(panel, "FooterNote",
                 "得分按 1:1 同时计入累计得分与可用积分；兑换只扣可用积分，累计得分与通关进度永不减少。",
                 15, Theme.Cream.Alpha(0.46f), TextAnchor.MiddleCenter, UIFactory.TopCenter,
-                new Vector2(0f, -878f), new Vector2(860f, 24f));
+                new Vector2(0f, -990f), new Vector2(860f, 24f));
 
             _shopDoneButton = UIFactory.TextButton(panel, "Done", "完成兑换", UIFactory.TopCenter, UIFactory.TopCenter,
-                new Vector2(0f, -978f), new Vector2(600f, 88f), Theme.Amber, Theme.Ink, 24,
+                new Vector2(0f, -1090f), new Vector2(600f, 88f), Theme.Amber, Theme.Ink, 24,
                 OnExchangeCloseClicked, 24);
             _shopRoot.SetActive(false);
         }
@@ -179,6 +181,7 @@ namespace Pachinko
                 : "得分按 1:1 同时计入累计得分与可用积分；兑换只扣可用积分，累计得分与通关进度永不减少。";
 
             RefreshEnchantRow();
+            RefreshMarbleRow();
             RefreshExplosionRow();
             RefreshBaffleRow();
         }
@@ -232,6 +235,23 @@ namespace Pachinko
             _explosionRow.accent.color = unlocked ? Theme.Red : Theme.InkSoft;
             _explosionRow.button.SetText(unlocked ? "已解锁" : $"解锁 {price:N0}");
             _explosionRow.button.SetInteractable(!unlocked && _game.Score.Credits >= price);
+        }
+
+        private void RefreshMarbleRow()
+        {
+            var shop = _game.Shop;
+            bool canBuy = shop.CanBuyExtraMarble;
+            int price = shop.ExtraMarblePrice;
+
+            _marbleRow.title.text = $"额外发射弹珠   {shop.CurrentVolleySize}/{GameConfig.MaxVolleySize} 颗";
+            _marbleRow.description.text = "永久增加每次齐射发射的弹珠数量。";
+            _marbleRow.effect.text = canBuy
+                ? $"购买后：每次齐射 +1 颗\n下一次：{price:N0} 可用积分"
+                : "已达到每次齐射弹珠上限。";
+            _marbleRow.icon.color = canBuy ? Theme.AmberBright : Theme.InkSoft;
+            _marbleRow.accent.color = canBuy ? Theme.AmberBright : Theme.InkSoft;
+            _marbleRow.button.SetText(canBuy ? $"购买 +1 · {price:N0}" : "已达上限");
+            _marbleRow.button.SetInteractable(canBuy && _game.Score.Credits >= price);
         }
 
         private void RefreshBaffleRow()

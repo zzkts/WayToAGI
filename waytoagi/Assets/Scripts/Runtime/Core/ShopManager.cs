@@ -14,8 +14,7 @@ namespace Pachinko
     }
 
     /// <summary>
-    /// V3 兑换系统：只保留附魔解锁、引爆技巧、减少挡板三项永久兑换。
-    /// 标准弹珠无限供应，因此不再有弹珠购买、库存与奖励洞升级。
+    /// 积分兑换系统：附魔、引爆、挡板调整与齐射弹珠容量升级。
     /// </summary>
     public class ShopManager
     {
@@ -25,6 +24,11 @@ namespace Pachinko
 
         public int Credits => _save.credits;
         public SaveData Save => _save;
+        public int ExtraMarblesPerVolley => _save.extraMarblesPerVolley;
+        public int CurrentVolleySize => Mathf.Min(GameConfig.MaxVolleySize, _config.VolleySize + ExtraMarblesPerVolley);
+        public bool CanBuyExtraMarble => CurrentVolleySize < GameConfig.MaxVolleySize;
+        public int ExtraMarblePrice => Mathf.RoundToInt(_config.economy.extraMarbleBasePrice *
+            Mathf.Pow(_config.economy.extraMarblePriceGrowth, ExtraMarblesPerVolley));
         public event System.Action Changed;
 
         public ShopManager(GameConfig config, SaveData save, bool persistToDisk = true)
@@ -98,6 +102,22 @@ namespace Pachinko
             _save.baffleCount = Mathf.Max(0, _save.baffleCount - 1);
             Persist();
             return new ShopResult(true, $"已移除一块挡板，剩余 {_save.baffleCount} 块");
+        }
+
+        /// <summary>购买一次齐射容量升级，永久增加一颗弹珠，最多装填 16 颗。</summary>
+        public ShopResult TryBuyExtraMarble()
+        {
+            if (!CanBuyExtraMarble) return new ShopResult(false, "齐射弹珠已达到上限");
+            int price = ExtraMarblePrice;
+            if (_save.credits < price)
+            {
+                return new ShopResult(false, $"可用积分不足，还差 {price - _save.credits:N0}");
+            }
+
+            _save.credits -= price;
+            _save.extraMarblesPerVolley++;
+            Persist();
+            return new ShopResult(true, $"已购买额外弹珠 · 每次齐射 {_config.VolleySize + _save.extraMarblesPerVolley} 颗");
         }
 
         private void Persist()

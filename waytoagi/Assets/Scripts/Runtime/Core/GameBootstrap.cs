@@ -60,7 +60,7 @@ namespace Pachinko
             var camera = CreateCamera();
             var board = BoardBuilder.Build(config, transform, camera);
 
-            int poolSize = Mathf.Clamp(Mathf.Max(14, config.VolleySize), 1, 16);
+            int poolSize = GameConfig.MaxVolleySize;
             var marbleRoot = new GameObject("Marbles").transform;
             marbleRoot.SetParent(transform, false);
             var marbles = new MarbleController[poolSize];

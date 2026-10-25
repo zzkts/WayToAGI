@@ -59,7 +59,11 @@ namespace PachinkoEditor
             Check("V3 只保留一颗无限标准弹珠", config.balls != null && config.balls.Length == 1 &&
                 config.GetStandardBall() != null && config.GetStandardBall().id == "ball_01" &&
                 config.GetStandardBall().multiplier == 1);
-            Check("每次齐射装填 3 颗", config.VolleySize == 3 && config.economy.marblesPerVolley == 3);
+            Check("每次齐射基础装填 3 颗", config.VolleySize == 3 && config.economy.marblesPerVolley == 3);
+            Check("额外弹珠首价 5000、每颗 ×1.6、上限 16 颗",
+                config.economy.extraMarbleBasePrice == 5000 &&
+                Mathf.Approximately(config.economy.extraMarblePriceGrowth, 1.6f) &&
+                GameConfig.MaxVolleySize == 16);
             Check("初始没有可用积分", config.economy.startingCredits == 0);
             Check("初始挡板 1 块、最多 3 块", config.economy.startingBaffleCount == 1 && config.MaxBaffleCount == 3);
 
@@ -81,17 +85,20 @@ namespace PachinkoEditor
 
             Check("两档附魔为 ×2 / ×5", config.enchants != null && config.enchants.Length == 2 &&
                 config.GetEnchant(1).multiplier == 2 && config.GetEnchant(2).multiplier == 5);
-            Check("附魔首档价格 10000、次档 16000",
-                config.EnchantPrice(0) == 10000 && config.EnchantPrice(1) == 16000);
+            Check("附魔首档价格 8000、次档 16000",
+                config.EnchantPrice(0) == 8000 && config.EnchantPrice(1) == 16000);
 
-            Check("循环阈值 1~3 为 5000", config.loop.earlyThreshold == 5000 && config.loop.earlyUntilLoop == 3);
-            Check("循环阈值 4~10 为 20000", config.loop.midThreshold == 20000 && config.loop.midUntilLoop == 10);
+            Check("循环阈值 1~4 为 3000", config.loop.earlyThreshold == 3000 && config.loop.earlyUntilLoop == 4);
+            Check("循环阈值 5~10 为 15000", config.loop.midThreshold == 15000 && config.loop.midUntilLoop == 10);
+            Check("第 11 循环起每循环 ×1.08", Mathf.Approximately(config.loop.lateThresholdGrowth, 1.08f));
             Check("通关目标为 1000000", config.loop.goalScore == 1000000);
-            Check("引爆：10 次碰撞 / 120px / 力度 8",
+            Check("引爆：30000 积分 / 10 次碰撞 / 120px / 力度 8",
+                config.explosion.unlockPrice == 30000 &&
                 config.explosion.triggerCollisions == 10 &&
                 Mathf.Approximately(config.explosion.radius, 1.2f) &&
                 Mathf.Approximately(config.explosion.force, 8f));
-            Check("挡板：幅度 120px、周期 2 秒", Mathf.Approximately(config.baffle.amplitude, 1.2f) &&
+            Check("挡板：移除 12000 / 幅度 120px / 周期 2 秒", config.baffle.reduceCost == 12000 &&
+                Mathf.Approximately(config.baffle.amplitude, 1.2f) &&
                 Mathf.Approximately(config.baffle.period, 2f));
         }
 
@@ -248,28 +255,28 @@ namespace PachinkoEditor
             var data = SaveData.CreateNew(config);
             var loop = new LoopManager(config, data, 12345);
 
-            Check("第 1 循环阈值为 5000", loop.ThresholdFor(1) == 5000);
-            Check("第 3 循环仍为 5000", loop.ThresholdFor(3) == 5000);
-            Check("第 4 循环提升到 20000", loop.ThresholdFor(4) == 20000);
-            Check("第 10 循环仍为 20000", loop.ThresholdFor(10) == 20000);
-            Check("第 11 循环开始按 1.3 倍递增", loop.ThresholdFor(11) == 26000);
-            Check("第 12 循环阈值为 33800", loop.ThresholdFor(12) == 33800);
+            Check("第 1 循环阈值为 3000", loop.ThresholdFor(1) == 3000);
+            Check("第 4 循环仍为 3000", loop.ThresholdFor(4) == 3000);
+            Check("第 5 循环提升到 15000", loop.ThresholdFor(5) == 15000);
+            Check("第 10 循环仍为 15000", loop.ThresholdFor(10) == 15000);
+            Check("第 11 循环按 1.08 倍递增为 16200", loop.ThresholdFor(11) == 16200);
+            Check("第 12 循环阈值为 17496", loop.ThresholdFor(12) == 17496);
             Check("通关目标 1000000", loop.GoalScore == 1000000);
 
             loop.BeginAttempt();
             Check("首次循环齐射次数为 2~3 次", loop.VolleysThisAttempt >= 2 && loop.VolleysThisAttempt <= 3);
-            loop.AddScore(20000);
+            loop.AddScore(3000);
             for (int i = 0; i < loop.VolleysThisAttempt; i++) loop.RegisterVolley();
             Check("齐射全部完成", loop.AttemptComplete);
-            Check("20000 分达到首循环阈值", loop.MeetsThreshold);
+            Check("3000 分达到首循环阈值", loop.MeetsThreshold);
 
             var failData = SaveData.CreateNew(config);
-            failData.loopIndex = 4;
+            failData.loopIndex = 5;
             var failLoop = new LoopManager(config, failData, 7);
             failLoop.BeginAttempt();
-            failLoop.AddScore(19999);
+            failLoop.AddScore(14999);
             for (int i = 0; i < failLoop.VolleysThisAttempt; i++) failLoop.RegisterVolley();
-            Check("19999 分未达到第 4 循环阈值", !failLoop.MeetsThreshold);
+            Check("14999 分未达到第 5 循环阈值", !failLoop.MeetsThreshold);
 
             var goalData = SaveData.CreateNew(config);
             goalData.totalScore = 1000000;
@@ -288,33 +295,49 @@ namespace PachinkoEditor
 
             var first = shop.TryUnlockNextEnchant();
             Check("解锁第一档附魔成功", first.success && shop.EnchantTier == 1 && shop.BallMultiplier == 2);
-            Check("第一档附魔扣费 10000", data.credits == 190000);
+            Check("第一档附魔扣费 8000", data.credits == 192000);
 
             var second = shop.TryUnlockNextEnchant();
             Check("解锁第二档附魔成功", second.success && shop.EnchantTier == 2 && shop.BallMultiplier == 5);
-            Check("第二档附魔扣费 16000", data.credits == 174000);
+            Check("第二档附魔扣费 16000", data.credits == 176000);
             Check("附魔全部解锁后无法继续", shop.IsEnchantMaxed && !shop.TryUnlockNextEnchant().success);
 
             var explosion = shop.TryUnlockExplosion();
-            Check("解锁引爆扣费 50000", explosion.success && shop.ExplosionUnlocked && data.credits == 124000);
-            Check("引爆不会重复扣费", !shop.TryUnlockExplosion().success && data.credits == 124000);
+            Check("解锁引爆扣费 30000", explosion.success && shop.ExplosionUnlocked && data.credits == 146000);
+            Check("引爆不会重复扣费", !shop.TryUnlockExplosion().success && data.credits == 146000);
 
             var reduce = shop.TryReduceBaffle();
-            Check("移除挡板扣费 20000", reduce.success && shop.BaffleCount == 0 && data.credits == 104000);
+            Check("移除挡板扣费 12000", reduce.success && shop.BaffleCount == 0 && data.credits == 134000);
             Check("没有挡板时无法继续移除", !shop.CanReduceBaffle && !shop.TryReduceBaffle().success);
+
+            var extraMarble = shop.TryBuyExtraMarble();
+            Check("购买额外弹珠后齐射数量增加", extraMarble.success && shop.CurrentVolleySize == 4 && data.credits == 129000);
+            Check("第二颗额外弹珠价格按 1.6 倍递增", shop.ExtraMarblePrice == 8000);
+            var secondExtraMarble = shop.TryBuyExtraMarble();
+            Check("再次购买额外弹珠成功", secondExtraMarble.success && shop.CurrentVolleySize == 5 && data.credits == 121000);
+
+            var cappedData = SaveData.CreateNew(config);
+            cappedData.extraMarblesPerVolley = GameConfig.MaxVolleySize - config.VolleySize;
+            cappedData.credits = 1000000;
+            var cappedShop = new ShopManager(config, cappedData, false);
+            Check("齐射达到 16 颗后不能继续购买", !cappedShop.CanBuyExtraMarble &&
+                !cappedShop.TryBuyExtraMarble().success && cappedData.credits == 1000000);
 
             var poor = SaveData.CreateNew(config);
             var poorShop = new ShopManager(config, poor, false);
             Check("积分不足时无法兑换", !poorShop.TryUnlockNextEnchant().success &&
                 !poorShop.TryUnlockExplosion().success && !poorShop.TryReduceBaffle().success &&
+                !poorShop.TryBuyExtraMarble().success &&
                 poor.credits == 0);
         }
 
         private static void MagazineTest(GameConfig config)
         {
             var magazine = MagazineBuilder.Build(config);
-            Check("无限弹仓固定装填 3 颗", magazine.Count == 3);
+            Check("无限弹仓基础装填 3 颗", magazine.Count == 3);
             Check("弹仓全部是标准白球", magazine.TrueForAll(b => b.id == "ball_01"));
+            Check("额外购买数量会加入弹仓", MagazineBuilder.Build(config, 2).Count == 5);
+            Check("弹仓数量最多为 16 颗", MagazineBuilder.Build(config, GameConfig.MaxVolleySize).Count == GameConfig.MaxVolleySize);
         }
 
         private static void SaveRoundTripTest(GameConfig config)
@@ -328,6 +351,7 @@ namespace PachinkoEditor
             data.loopIndex = 7;
             data.goalReached = false;
             data.enchantTier = 1;
+            data.extraMarblesPerVolley = 4;
             data.explosionUnlocked = true;
             data.baffleCount = 2;
             data.tiltCalibration = 0.12f;
@@ -340,16 +364,17 @@ namespace PachinkoEditor
             Check("存档往返保留可用积分", copy.credits == 12345);
             Check("存档往返保留最高齐射/循环", copy.bestVolleyScore == 45678 && copy.bestLoopScore == 7890);
             Check("存档往返保留循环进度", copy.loopIndex == 7);
+            Check("存档往返保留额外弹珠升级", copy.extraMarblesPerVolley == 4);
             Check("存档往返保留附魔/引爆/挡板",
                 copy.enchantTier == 1 && copy.explosionUnlocked && copy.baffleCount == 2);
             Check("存档往返保留倾斜校准", Mathf.Approximately(copy.tiltCalibration, 0.12f) && copy.tiltInverted);
 
             var legacy = new SaveData { version = 4, totalScore = 123456, credits = 5000 };
             legacy.EnsureIntegrity(config);
-            Check("旧存档迁移后循环从第 1 轮开始", legacy.version == 5 && legacy.loopIndex == 1);
+            Check("旧存档迁移到 V6 后循环从第 1 轮开始", legacy.version == 6 && legacy.loopIndex == 1);
             Check("旧存档迁移后兑换进度重置",
                 legacy.enchantTier == 0 && !legacy.explosionUnlocked &&
-                legacy.baffleCount == config.economy.startingBaffleCount);
+                legacy.baffleCount == config.economy.startingBaffleCount && legacy.extraMarblesPerVolley == 0);
         }
 
         private static void EconomyTest(GameConfig config)

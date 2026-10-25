@@ -61,7 +61,7 @@ namespace Pachinko
             var root = new GameObject("Board").transform;
             root.SetParent(parent, false);
             refs.Root = root;
-            // 上方半圆凹槽的顶点在 y≈8.605，机柜和相机取景需要比旧版更高。
+            // 保留顶部机柜铭牌的取景空间。
             refs.VisualBounds = new Bounds(new Vector3(0f, 1.45f, 0f), new Vector3(8.1f, 15.7f, 0.1f));
 
             _pinMaterial = new PhysicsMaterial2D("PinMaterial") { bounciness = config.physics.pinBounciness, friction = 0.04f };
@@ -116,25 +116,16 @@ namespace Pachinko
 
         private static void BuildCabinet(Transform root)
         {
-            // 机柜整体向上加高，容纳上边框的半圆凹槽（顶点约 y=8.605）。
+            // 顶部机柜木框形成封闭方框，台面边界由直线顶墙阻挡。
             Theme.RoundedRect(root, "BoardShadow", new Vector2(0.18f, 1.44f), new Vector2(8.02f, 15.53f), Theme.Shadow, 50, -100);
             Theme.RoundedRect(root, "CabinetOuter", new Vector2(0f, 1.505f), new Vector2(7.88f, 15.29f), Theme.Hex("#3A281C"), 50, -95);
             Theme.RoundedRect(root, "CabinetRim", new Vector2(0f, 1.525f), new Vector2(7.68f, 15.11f), Theme.Hex("#A66C35"), 47, -94);
             Theme.RoundedRect(root, "CabinetInner", new Vector2(0f, 1.525f), new Vector2(7.48f, 14.93f), Theme.Cream, 44, -93);
             Theme.RoundedRect(root, "PlaySurface", new Vector2(0f, 1.515f), new Vector2(7.12f, 14.37f), Theme.Hex("#F9EDD9"), 28, -90);
 
-            // 顶边以上到半圆弧之间仍是机柜木框；半圆内部用与台面相同的颜色填满，
-            // 形成真正可以进球的半圆凹槽，而不是一条悬空的弧线。
-            // 凹槽的直径与 BuildRails 中的弧墙使用同一组边界计算，避免视觉和碰撞尺寸漂移。
-            float domeLeftX = -BoardGeometry.PlayHalfWidth;
-            float domeRightX = BoardGeometry.LauncherWallX;
-            float domeCenterX = (domeLeftX + domeRightX) * 0.5f;
-            float domeDiameter = domeRightX - domeLeftX;
-            Theme.RoundedRect(root, "TopFrame", new Vector2(0f, 7.20f), new Vector2(7.48f, 3.50f), Theme.Hex("#A66C35"), 28, -89);
-            Theme.CircleObject(root, "TopDomeInterior", new Vector2(domeCenterX, BoardGeometry.PlayTop), domeDiameter, Theme.Hex("#F9EDD9"), -88);
+            Theme.RoundedRect(root, "TopFrame", new Vector2(0f, 7.20f), new Vector2(7.48f, 3.50f), Theme.Hex("#A66C35"), 28, -80);
 
-            // 表面淡淡的圆形装饰，像老式街机台面的印刷底纹；必须画在凹槽填色之上，
-            // 否则凹槽圆的下半部分会把台面原有的光晕切出一道硬边。
+            // 表面淡淡的圆形装饰，像老式街机台面的印刷底纹。
             Theme.CircleObject(root, "SurfaceHalo", new Vector2(-1.7f, 2.1f), 5.8f, Theme.CreamDeep.Alpha(0.32f), -87);
             Theme.CircleObject(root, "SurfaceHalo2", new Vector2(2.1f, -1.4f), 4.0f, Theme.Amber.Alpha(0.045f), -86);
             Theme.CircleObject(root, "SurfaceHalo3", new Vector2(-2.3f, -3.9f), 2.3f, Theme.Teal.Alpha(0.035f), -86);
@@ -150,63 +141,14 @@ namespace Pachinko
             CreateRail(root, "LeftWall", new Vector2(-BoardGeometry.PlayHalfWidth, -5.52f), new Vector2(-BoardGeometry.PlayHalfWidth, BoardGeometry.PlayTop), railThickness, true, railColor, 8, 0f);
             CreateRail(root, "RightWall", new Vector2(BoardGeometry.PlayHalfWidth, -5.52f), new Vector2(BoardGeometry.PlayHalfWidth, BoardGeometry.PlayTop), railThickness, true, railColor, 8, 0f);
 
-            // 上边框不再是一条直墙：整段台面顶边换成半圆，直径等于左侧台面顶边宽度
-            // （左墙 x=-3.55 到发射道隔板 x=2.62，宽 6.17，半径 3.085）。
-            // 半圆向上凹：直径落在原顶边高度，弧线向上拱到 y≈8.605，形成朝下开口的半圆凹槽；
-            // 弹珠从闸门进入后可以继续向上进入凹槽，沿凹面自然弯曲，而不会被挡在闸门口。
-            // 发射道/闸门在 x=2.62 右侧，仍保留直顶墙，不会被圆弧覆盖。
-            float arcLeftX = -BoardGeometry.PlayHalfWidth;
-            float arcRightX = BoardGeometry.LauncherWallX;
-            float arcCenterX = (arcLeftX + arcRightX) * 0.5f;
-            float arcRadius = (arcRightX - arcLeftX) * 0.5f;
-            const int arcSegments = 48;
-
-            CreateRail(root, "TopWall_Right",
-                new Vector2(arcRightX - 0.02f, BoardGeometry.PlayTop),
+            CreateRail(root, "TopWall",
+                new Vector2(-BoardGeometry.PlayHalfWidth, BoardGeometry.PlayTop),
                 new Vector2(BoardGeometry.PlayHalfWidth, BoardGeometry.PlayTop),
                 railThickness, true, railColor, 8, 0f);
 
-            // 圆弧用一个连续的 EdgeCollider2D 和一条 LineRenderer 绘制。
-            // 不能把圆弧拆成很多短 Rail：短圆角矩形在弧线上会连成一串“珠子”，看起来又像一排钉柱。
-            var arcRoot = new GameObject("TopBorderArc");
-            arcRoot.transform.SetParent(root, false);
-            arcRoot.transform.localPosition = new Vector3(arcCenterX, BoardGeometry.PlayTop, 0f);
-
-            var arcPoints = new Vector2[arcSegments + 1];
-            var arcLinePoints = new Vector3[arcSegments + 1];
-            for (int i = 0; i <= arcSegments; i++)
-            {
-                // 0° → 180°：取圆的上半段，最高点约为 y=8.605。
-                float angle = Mathf.PI * i / arcSegments;
-                var point = new Vector2(Mathf.Cos(angle) * arcRadius, Mathf.Sin(angle) * arcRadius);
-                arcPoints[i] = point;
-                arcLinePoints[i] = new Vector3(point.x, point.y, 0f);
-            }
-
-            var arcCollider = arcRoot.AddComponent<EdgeCollider2D>();
-            arcCollider.points = arcPoints;
-            // 与 0.20 的可视线宽一致；弧线整体位于原顶边上方，不再和钉柱争空间。
-            arcCollider.edgeRadius = 0.10f;
-            arcCollider.sharedMaterial = _wallMaterial;
-
-            var arcMaterial = new Material(Shader.Find("Sprites/Default"));
-            var arcShadow = CreateArcLine(arcRoot.transform, "TopBorderArcShadow",
-                arcLinePoints, 0.27f, Theme.Shadow.Alpha(0.35f), 8, arcMaterial);
-            arcShadow.transform.localPosition = new Vector3(0.025f, -0.05f, 0f);
-            CreateArcLine(arcRoot.transform, "TopBorderArcVisual",
-                arcLinePoints, 0.20f, railColor, 9, arcMaterial);
-
-            // 弧线与直墙的接点各加一颗装饰铆钉，遮住拼接缝并强调这里是弯曲的上边框。
-            for (int side = -1; side <= 1; side += 2)
-            {
-                var cap = new Vector2(arcCenterX + side * arcRadius, BoardGeometry.PlayTop);
-                Theme.CircleObject(root, $"TopBorderCap_{side}", cap, 0.30f, Theme.Hex("#6D4A2E"), 10);
-                Theme.CircleObject(root, $"TopBorderCapInner_{side}", cap, 0.17f, Theme.Amber, 11);
-            }
-
             CreateRail(root, "BottomWall", new Vector2(-3.48f, -5.62f), new Vector2(3.48f, -5.62f), 0.16f, true, Theme.Hex("#6D4A2E"), 4, 0f);
 
-            // 台面四角的螺丝；上半部随加高的机柜一起上移，落在凹槽上方的木框上。
+            // 台面四角的螺丝；上半部落在顶部木框上。
             for (int sx = -1; sx <= 1; sx += 2)
             {
                 for (int sy = -1; sy <= 1; sy += 2)
@@ -310,9 +252,7 @@ namespace Pachinko
 
         private static void BuildPins(Transform parent)
         {
-            // 上半区只保留普通交错钉阵，不再用钉柱拼弧线；弧线属于上边框（见 BuildRails）。
-            // 半圆向上拱到原顶边之上，钉阵不需要为弧线让出下方空间；保持五排、
-            // 最高一排 y=3.15，给上方半圆凹槽留出完整的飞行空间。
+            // 上半区只保留普通交错钉阵，顶部由水平边框阻挡。
             // 最下一排保持 y=0.60：挡板 A 的顶缘约 -0.83，给钉阵与摆动挡板之间留出穿行空间。
             float[] wideRow = { -3.05f, -1.75f, -0.45f, 0.85f, 2.15f };
             float[] offsetRow = { -2.40f, -1.10f, 0.20f, 1.50f };
@@ -400,7 +340,7 @@ namespace Pachinko
             var go = new GameObject("WorldLabels", typeof(RectTransform));
             go.transform.SetParent(refs.Root, false);
             var rect = (RectTransform)go.transform;
-            // 画布高度跟着加高的机柜一起增加，顶部铭牌抬到半圆凹槽上方仍不会被裁掉。
+            // 画布高度覆盖顶部木框上的铭牌。
             rect.sizeDelta = new Vector2(750f, 1900f);
             rect.localScale = Vector3.one * 0.01f;
             rect.localPosition = Vector3.zero;
@@ -411,7 +351,7 @@ namespace Pachinko
             refs.WorldCanvas = canvas;
             refs.WorldRoot = rect;
 
-            // 台面顶部的铭牌文字：放在半圆凹槽顶点（y≈8.605）上方的木框上。
+            // 台面顶部的铭牌文字放在木框上。
             UIFactory.Image(rect, "Plaque", Theme.Rounded(16), Theme.Hex("#4A3526"), UIFactory.Center, UIFactory.Center,
                 new Vector2(0f, 886f), new Vector2(280f, 38f));
             UIFactory.Label(rect, "Brand", "PACHINKO  ·  弹珠机", 19, Theme.Cream, TextAnchor.MiddleCenter,
@@ -529,29 +469,6 @@ namespace Pachinko
                 box.sharedMaterial = _wallMaterial;
             }
             return go;
-        }
-
-        private static LineRenderer CreateArcLine(Transform parent, string name, Vector3[] points,
-            float width, Color color, int order, Material material)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-            var line = go.AddComponent<LineRenderer>();
-            line.useWorldSpace = false;
-            line.positionCount = points.Length;
-            line.SetPositions(points);
-            line.startWidth = width;
-            line.endWidth = width;
-            line.numCapVertices = 8;
-            line.numCornerVertices = 4;
-            line.alignment = LineAlignment.TransformZ;
-            line.textureMode = LineTextureMode.Stretch;
-            line.sharedMaterial = material;
-            line.startColor = color;
-            line.endColor = color;
-            line.sortingOrder = order;
-            line.generateLightingData = false;
-            return line;
         }
 
         private static void SetSimpleDiameter(SpriteRenderer renderer, float diameter)
