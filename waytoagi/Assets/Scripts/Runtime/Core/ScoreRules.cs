@@ -3,52 +3,25 @@ using UnityEngine;
 namespace Pachinko
 {
     /// <summary>
-    /// 冲分模式的核心规则，全部硬编码，方便直接调手感：
-    /// 连续命中累积连锁，第 5 次起进入狂热；全中追加 50% 奖励；7 号洞每轮首次命中触发头奖。
+    /// V3 计分规则：本次得分 = 弹珠倍率 × 奖励洞倍率 × 洞口基础积分 × 同洞连击。
+    /// 同洞连击从 ×1 开始，连续命中同一奖励洞依次 ×2 / ×4 / ×8，封顶 ×8；
+    /// 落入别的奖励洞、空穴或漏球都会归零。
+    /// 得分按 1:1 同时计入累计得分与可用积分，兑换只扣可用积分。
     /// </summary>
     public static class ScoreRules
     {
-        public const int ChainCap = 5;
-        public const int FeverThreshold = 5;
-        public const int FeverMultiplier = 2;
-        public const float AllHitBonusRate = 0.5f;
-        public const float CreditRate = 0.2f;
-        public const int JackpotBaseBonus = 10000;
+        public const int ComboCap = 8;
 
-        /// <summary>累计得分里程碑，达到后弹出冲分结算，然后继续无尽模式。</summary>
-        public static readonly int[] Milestones =
+        public static int ComboMultiplierFor(int streak)
         {
-            250000,
-            1000000,
-            2500000,
-            5000000,
-            10000000,
-            25000000,
-            50000000
-        };
-
-        public static int MilestoneCount => Milestones.Length;
-
-        public static int MilestoneAt(int index)
-        {
-            if (Milestones.Length == 0) return 0;
-            return Milestones[Mathf.Clamp(index, 0, Milestones.Length - 1)];
+            if (streak <= 1) return 1;
+            int exponent = Mathf.Min(streak - 1, 3);
+            return Mathf.Min(1 << exponent, ComboCap);
         }
 
         public static int CreditsFor(int score)
         {
-            return Mathf.RoundToInt(Mathf.Max(0, score) * CreditRate);
-        }
-
-        public static int AllHitBonusFor(int volleyScore)
-        {
-            return Mathf.RoundToInt(Mathf.Max(0, volleyScore) * AllHitBonusRate);
-        }
-
-        public static int JackpotBonusFor(BallDef ball)
-        {
-            int multiplier = ball != null ? Mathf.Max(1, ball.multiplier) : 1;
-            return JackpotBaseBonus * multiplier;
+            return Mathf.Max(0, score);
         }
     }
 }

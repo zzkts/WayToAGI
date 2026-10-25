@@ -11,27 +11,9 @@ namespace Pachinko
         private Text _menuFooterText;
         private UIButton _menuStartButton;
 
-        private GameObject _resultRoot;
-        private Text _resultTitle;
-        private GameObject _resultFormulaGroup;
-        private Text _resultFormula;
-        private Text _resultCombo;
-        private Text _resultTotal;
-        private Text _resultMiss;
-        private Text _resultStats;
-        private Text _resultPhaseInfo;
-        private UIButton _resultContinueButton;
-        private ScoreResult _lastResult;
-        private bool _lastResultHit;
-        private string _lastMissMessage;
-
-        private GameObject _milestoneRoot;
-        private Text _milestoneKicker;
-        private Text _milestoneTitle;
-        private Text _milestoneSubtitle;
-        private Text _milestoneCopy;
-        private Text _milestoneStats;
-        private UIButton _milestoneContinueButton;
+        private GameObject _victoryRoot;
+        private Text _victoryStats;
+        private UIButton _victoryContinueButton;
 
         private GameObject _settingsRoot;
         private Text _settingsSourceText;
@@ -69,43 +51,50 @@ namespace Pachinko
             var title = UIFactory.Label(root, "Title", "弹珠机", 118, Theme.Cream, TextAnchor.MiddleCenter,
                 UIFactory.Center, new Vector2(0f, 480f), new Vector2(900f, 150f), true);
             UIFactory.AddShadow(title, Theme.Hex("#000000").Alpha(0.45f), new Vector2(0f, -6f));
-            UIFactory.Label(root, "Subtitle", "PACHINKO  ·  重力感应倾斜版", 27, Theme.Amber, TextAnchor.MiddleCenter,
+            UIFactory.Label(root, "Subtitle", "PACHINKO  ·  动态循环版", 27, Theme.Amber, TextAnchor.MiddleCenter,
                 UIFactory.Center, new Vector2(0f, 380f), new Vector2(900f, 40f), true);
-            UIFactory.Label(root, "Tagline", "一拉齐射  /  连锁狂热  /  全中冲分", 20, Theme.Cream.Alpha(0.58f),
+            UIFactory.Label(root, "Tagline", $"无限白球  /  同洞连击  /  {_game.GoalScore:N0} 目标", 20, Theme.Cream.Alpha(0.58f),
                 TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 336f), new Vector2(760f, 32f));
 
+            var firstEnchant = _config.GetEnchant(1);
+            var secondEnchant = _config.GetEnchant(2);
+            Color red = firstEnchant != null ? Theme.Hex(firstEnchant.color) : Theme.Hex("#E85C45");
+            Color blue = secondEnchant != null ? Theme.Hex(secondEnchant.color) : Theme.Hex("#4C86D9");
             CreateMenuBall(root, new Vector2(-160f, 250f), 66f, Theme.Cream, "×1");
-            CreateMenuBall(root, new Vector2(0f, 250f), 82f, Theme.Hex("#E85C45"), "×2");
-            CreateMenuBall(root, new Vector2(160f, 250f), 66f, Theme.Hex("#4C86D9"), "×3");
+            CreateMenuBall(root, new Vector2(0f, 250f), 82f, red, $"×{(firstEnchant != null ? firstEnchant.multiplier : 2)}");
+            CreateMenuBall(root, new Vector2(160f, 250f), 66f, blue, $"×{(secondEnchant != null ? secondEnchant.multiplier : 5)}");
 
             var instructions = UIFactory.Panel(root, "Instructions", UIFactory.Center, UIFactory.Center,
-                new Vector2(0f, -78f), new Vector2(880f, 386f), Theme.Hex("#21160F").Alpha(0.78f), 26, true, 8f);
-            UIFactory.RoundedRectOnUI(instructions, "Accent", new Vector2(34f, -26f), new Vector2(6f, 330f), Theme.Amber, 3);
+                new Vector2(0f, -70f), new Vector2(880f, 366f), Theme.Hex("#21160F").Alpha(0.78f), 26, true, 8f);
+            UIFactory.RoundedRectOnUI(instructions, "Accent", new Vector2(34f, -24f), new Vector2(6f, 312f), Theme.Amber, 3);
             UIFactory.Label(instructions, "Line1",
-                "<color=#E9A93E>① 商店阶段</color>：弹珠 / 附魔技能 / 奖励洞三条升级线", 21, Theme.Cream,
-                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -28f), new Vector2(780f, 64f));
+                $"<color=#E9A93E>① 无限白球</color>：标准弹珠不购买、不消耗库存，每次齐射装填 {_config.VolleySize} 颗", 20, Theme.Cream,
+                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -24f), new Vector2(790f, 56f));
             UIFactory.Label(instructions, "Line2",
-                "<color=#57B4BC>② 发射阶段</color>：商店买的弹珠全部装填进弹仓", 21, Theme.Cream,
-                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -110f), new Vector2(780f, 64f));
+                "<color=#57B4BC>② 动态循环</color>：每次循环的齐射次数不固定，循环越高次数越多", 20, Theme.Cream,
+                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -88f), new Vector2(790f, 56f));
             UIFactory.Label(instructions, "Line3",
-                "<color=#E9A93E>③</color>  拖拽弹簧蓄力，拉一次发射待发射槽里的全部弹珠", 21, Theme.Cream,
-                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -192f), new Vector2(780f, 64f));
+                "<color=#E9A93E>③ 倾斜控球</color>：拖拽弹簧一次发射全部弹珠，倾斜手机改变重力方向", 20, Theme.Cream,
+                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -152f), new Vector2(790f, 56f));
             UIFactory.Label(instructions, "Line4",
-                "<color=#C84B3D>④</color>  倾斜控球；同洞连击 ×2/×4/×8，连续命中触发连锁与狂热", 21, Theme.Cream,
-                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -274f), new Vector2(780f, 64f));
+                "<color=#C84B3D>④ 同洞连击</color>：连续命中同一奖励洞 ×2 / ×4 / ×8；换洞、空穴、漏球归零", 20, Theme.Cream,
+                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -216f), new Vector2(790f, 56f));
+            UIFactory.Label(instructions, "Line5",
+                $"<color=#E9A93E>⑤ 兑换与通关</color>：每循环结束自动兑换附魔 / 引爆 / 挡板；累计 {_game.GoalScore:N0} 通关", 20, Theme.Cream,
+                TextAnchor.UpperLeft, UIFactory.TopLeft, new Vector2(64f, -280f), new Vector2(790f, 56f));
 
             UIFactory.Label(root, "DesktopHint", "电脑试玩：鼠标拖动推杆  ·  A / D 或 ← / → 倾斜（或按住屏幕左右侧）", 17,
-                Theme.Cream.Alpha(0.45f), TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, -326f), new Vector2(900f, 28f));
+                Theme.Cream.Alpha(0.45f), TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, -316f), new Vector2(900f, 28f));
 
             _menuSaveText = UIFactory.Label(root, "SaveSummary", "", 20, Theme.AmberBright, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, -380f), new Vector2(820f, 32f));
+                UIFactory.Center, new Vector2(0f, -372f), new Vector2(860f, 56f));
 
             _menuStartButton = UIFactory.TextButton(root, "StartButton", "开始游戏", UIFactory.Center, UIFactory.Center,
-                new Vector2(0f, -485f), new Vector2(460f, 100f), Theme.Amber, Theme.Ink, 36,
+                new Vector2(0f, -478f), new Vector2(460f, 100f), Theme.Amber, Theme.Ink, 36,
                 () => _game.StartGame(), 30);
             UIFactory.AddShadow(_menuStartButton.label, Theme.Hex("#7B4A15").Alpha(0.28f), new Vector2(0f, -3f));
 
-            _menuFooterText = UIFactory.Label(root, "Footer", "MVP V2.0 · 无止境冲分 · 连锁 / 狂热 / 全中", 16,
+            _menuFooterText = UIFactory.Label(root, "Footer", $"V3.0 · 动态循环 · {_game.GoalScore:N0} 通关目标", 16,
                 Theme.Cream.Alpha(0.34f), TextAnchor.MiddleCenter, UIFactory.BottomCenter, new Vector2(0f, 34f), new Vector2(900f, 26f));
 
             _menuRoot.SetActive(false);
@@ -134,180 +123,102 @@ namespace Pachinko
             if (_menuSaveText == null || _game == null) return;
             int total = _game.Score.TotalScore;
             int credits = _game.Score.Credits;
+            int bestLoop = _game.Score.BestLoopScore;
             int bestVolley = _game.Score.BestVolleyScore;
-            int next = _game.NextMilestone;
+            int loop = _game.LoopIndex;
 
-            if (total > 0 || credits > 0 || bestVolley > 0)
+            if (total > 0 || credits > 0 || bestLoop > 0)
             {
-                string target = next > 0 ? $"下一目标 {next:N0}" : "传奇冲分";
                 _menuSaveText.text =
-                    $"累计 {total:N0}  ·  单轮 {bestVolley:N0}  ·  {target}  ·  积分 {credits:N0}";
+                    $"第 {loop} 循环  ·  累计 {total:N0} / {_game.GoalScore:N0}  ·  可用 {credits:N0}\n" +
+                    $"最高循环 {bestLoop:N0}  ·  最高齐射 {bestVolley:N0}";
             }
             else
             {
-                _menuSaveText.text = next > 0
-                    ? $"新纪录从第一轮开始  ·  下一目标 {next:N0}"
-                    : "新纪录从第一轮开始";
+                _menuSaveText.text = $"新纪录从第 1 循环开始  ·  通关目标 {_game.GoalScore:N0}";
             }
 
             if (_menuFooterText != null)
             {
-                _menuFooterText.text = "MVP V2.0 · 无止境冲分 · 连锁 / 狂热 / 全中";
+                _menuFooterText.text = _game.GoalReached
+                    ? "V3.0 · 已通关 · 无尽模式"
+                    : $"V3.0 · 动态循环 · {_game.GoalScore:N0} 通关目标";
             }
 
             if (_menuStartButton != null)
             {
-                _menuStartButton.SetText(total > 0 || credits > 0 || bestVolley > 0 ? "继续冲分" : "开始游戏");
+                _menuStartButton.SetText(_game.GoalReached
+                    ? "进入无尽模式"
+                    : (total > 0 || credits > 0 || bestLoop > 0 ? "继续挑战" : "开始游戏"));
             }
         }
 
-        private void BuildResultPanel()
+        private void BuildVictoryPanel()
         {
-            var root = UIFactory.Stretch(_modalLayer, "ResultModal");
+            var root = UIFactory.Stretch(_modalLayer, "VictoryModal");
             var dim = root.gameObject.AddComponent<Image>();
             dim.color = Theme.Overlay;
             dim.raycastTarget = true;
-            _resultRoot = root.gameObject;
+            _victoryRoot = root.gameObject;
 
-            var card = UIFactory.Panel(root, "ResultCard", UIFactory.Center, UIFactory.Center,
-                Vector2.zero, new Vector2(820f, 700f), Theme.Panel, 34, true, 12f);
-            UIFactory.Image(card, "Accent", Theme.Rounded(3), Theme.Amber,
-                UIFactory.TopCenter, UIFactory.TopCenter, new Vector2(0f, -14f), new Vector2(120f, 6f));
-            _resultTitle = UIFactory.Label(card, "Title", "命中", 40, Theme.Cream, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, 282f), new Vector2(740f, 60f), true);
-
-            var formulaGroup = UIFactory.Panel(card, "FormulaGroup", UIFactory.Center, UIFactory.Center,
-                new Vector2(0f, 170f), new Vector2(690f, 96f), Theme.Ink.Alpha(0.55f), 20, false);
-            _resultFormulaGroup = formulaGroup.gameObject;
-            _resultFormula = UIFactory.Label(formulaGroup, "Formula", "", 32, Theme.Cream, TextAnchor.MiddleCenter,
-                UIFactory.Center, Vector2.zero, new Vector2(650f, 80f), true);
-            _resultCombo = UIFactory.Label(card, "Combo", "", 23, Theme.Amber, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, 96f), new Vector2(700f, 34f));
-
-            UIFactory.Label(card, "TotalCaption", "本次得分", 18, Theme.Cream.Alpha(0.48f), TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, 32f), new Vector2(300f, 24f));
-            _resultTotal = UIFactory.Label(card, "Total", "+0", 58, Theme.AmberBright, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, -20f), new Vector2(700f, 74f), true);
-
-            _resultMiss = UIFactory.Label(card, "Miss", "弹珠没有进入奖励洞", 23, Theme.Cream.Alpha(0.7f),
-                TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 120f), new Vector2(700f, 36f));
-
-            UIFactory.Image(card, "Divider", Theme.Rounded(1), Theme.Ink.Alpha(0.25f),
-                UIFactory.Center, UIFactory.Center, new Vector2(0f, -80f), new Vector2(640f, 2f)).raycastTarget = false;
-            _resultStats = UIFactory.Label(card, "Stats", "", 20, Theme.Cream.Alpha(0.72f), TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, -126f), new Vector2(700f, 60f));
-            _resultPhaseInfo = UIFactory.Label(card, "PhaseInfo", "", 16, Theme.Amber.Alpha(0.8f), TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, -180f), new Vector2(700f, 24f));
-            _resultContinueButton = UIFactory.TextButton(card, "Continue", "继续发射", UIFactory.BottomCenter, UIFactory.BottomCenter,
-                new Vector2(0f, 36f), new Vector2(430f, 84f), Theme.Amber, Theme.Ink, 24,
-                () => _game.ContinueFromResult(), 24);
-
-            _resultRoot.SetActive(false);
-        }
-
-        private void RefreshResultPanel(ScoreResult result, bool hit, string missMessage)
-        {
-            if (_resultTitle == null) return;
-            _resultTitle.text = hit && result != null ? $"命中 · {result.hole.displayName}" : "差一点！";
-            _resultFormulaGroup.SetActive(hit && result != null);
-            _resultMiss.gameObject.SetActive(!hit);
-            if (hit && result != null)
-            {
-                _resultFormula.text = result.Formula;
-                _resultCombo.text = result.MultiplierText;
-                _resultTotal.text = $"+{result.total:N0}";
-                _resultMiss.text = "";
-            }
-            else
-            {
-                _resultCombo.text = "";
-                _resultTotal.text = "+0";
-                _resultMiss.text = string.IsNullOrEmpty(missMessage) ? "弹珠没有进入奖励洞" : missMessage;
-            }
-
-            _resultStats.text =
-                $"累计得分   {_game.Score.TotalScore:N0}   ·   可用积分   {_game.Score.Credits:N0}\n" +
-                $"最高单轮   {_game.Score.BestVolleyScore:N0}   ·   最高单次   {_game.Score.BestSingleScore:N0}";
-
-            int remaining = _game.MagazineRemaining;
-            if (_resultPhaseInfo != null)
-            {
-                _resultPhaseInfo.text = remaining > 0
-                    ? $"发射阶段继续 · 弹仓剩余 {remaining} 颗"
-                    : "最后一颗已发射 · 下一步返回商店阶段";
-            }
-            if (_resultContinueButton != null)
-            {
-                _resultContinueButton.SetText(remaining > 0 ? $"继续发射 · 剩余 {remaining} 颗" : "结束发射 · 进入商店");
-            }
-        }
-
-        private void BuildMilestonePanel()
-        {
-            var root = UIFactory.Stretch(_modalLayer, "MilestoneModal");
-            var dim = root.gameObject.AddComponent<Image>();
-            dim.color = Theme.Overlay;
-            dim.raycastTarget = true;
-            _milestoneRoot = root.gameObject;
-
-            var glow = UIFactory.Image(root, "MilestoneGlow", Theme.Glow, Theme.Amber.Alpha(0.28f),
-                UIFactory.Center, UIFactory.Center, new Vector2(0f, 40f), new Vector2(1200f, 1200f));
+            var glow = UIFactory.Image(root, "VictoryGlow", Theme.Glow, Theme.Amber.Alpha(0.30f),
+                UIFactory.Center, UIFactory.Center, new Vector2(0f, 40f), new Vector2(1300f, 1300f));
             glow.raycastTarget = false;
 
-            var card = UIFactory.Panel(root, "MilestoneCard", UIFactory.Center, UIFactory.Center,
-                Vector2.zero, new Vector2(840f, 720f), Theme.Panel, 36, true, 12f);
+            var card = UIFactory.Panel(root, "VictoryCard", UIFactory.Center, UIFactory.Center,
+                Vector2.zero, new Vector2(860f, 760f), Theme.Panel, 36, true, 12f);
             UIFactory.Image(card, "TopBand", Theme.Rounded(3), Theme.Amber,
-                UIFactory.TopCenter, UIFactory.TopCenter, new Vector2(0f, -14f), new Vector2(220f, 7f));
-            _milestoneKicker = UIFactory.Label(card, "Kicker", "SCORE MILESTONE", 20, Theme.Amber, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, 282f), new Vector2(500f, 30f), true);
-            _milestoneTitle = UIFactory.Label(card, "Title", "里程碑达成！", 68, Theme.AmberBright, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, 202f), new Vector2(740f, 110f), true);
-            _milestoneSubtitle = UIFactory.Label(card, "Subtitle", "", 24, Theme.Cream,
-                TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 130f), new Vector2(740f, 40f));
-            _milestoneCopy = UIFactory.Label(card, "Copy", "", 18,
-                Theme.Cream.Alpha(0.6f), TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 62f), new Vector2(720f, 70f));
+                UIFactory.TopCenter, UIFactory.TopCenter, new Vector2(0f, -14f), new Vector2(240f, 7f));
+            UIFactory.Label(card, "Kicker", "GOAL REACHED", 20, Theme.Amber, TextAnchor.MiddleCenter,
+                UIFactory.Center, new Vector2(0f, 302f), new Vector2(500f, 30f), true);
+            UIFactory.Label(card, "Title", $"{_game.GoalScore:N0} 达成！", 66, Theme.AmberBright, TextAnchor.MiddleCenter,
+                UIFactory.Center, new Vector2(0f, 222f), new Vector2(760f, 100f), true);
+            UIFactory.Label(card, "Subtitle", "通关成功 · 无尽模式已解锁", 26, Theme.Cream,
+                TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 150f), new Vector2(740f, 40f));
+            UIFactory.Label(card, "Copy",
+                $"累计得分达到 {_game.GoalScore:N0}。\n循环会继续变长、阈值继续提高，但累计得分与兑换进度都会保留。",
+                19, Theme.Cream.Alpha(0.66f), TextAnchor.MiddleCenter, UIFactory.Center,
+                new Vector2(0f, 80f), new Vector2(720f, 70f));
 
             var statsCard = UIFactory.Panel(card, "StatsCard", UIFactory.Center, UIFactory.Center,
-                new Vector2(0f, -60f), new Vector2(660f, 190f), Theme.Ink.Alpha(0.42f), 22, false);
-            _milestoneStats = UIFactory.Label(statsCard, "Stats", "", 21, Theme.Cream, TextAnchor.MiddleCenter,
-                UIFactory.Center, Vector2.zero, new Vector2(610f, 170f));
+                new Vector2(0f, -58f), new Vector2(680f, 190f), Theme.Ink.Alpha(0.42f), 22, false);
+            _victoryStats = UIFactory.Label(statsCard, "Stats", "", 21, Theme.Cream, TextAnchor.MiddleCenter,
+                UIFactory.Center, Vector2.zero, new Vector2(630f, 170f));
 
-            _milestoneContinueButton = UIFactory.TextButton(card, "Continue", "继续冲分", UIFactory.BottomCenter, UIFactory.BottomCenter,
-                new Vector2(0f, 48f), new Vector2(430f, 84f), Theme.Amber, Theme.Ink, 24,
-                () => _game.ContinueFromMilestone(), 24);
-            _milestoneRoot.SetActive(false);
+            _victoryContinueButton = UIFactory.TextButton(card, "Continue", "继续无尽模式", UIFactory.BottomCenter, UIFactory.BottomCenter,
+                new Vector2(0f, 48f), new Vector2(440f, 84f), Theme.Amber, Theme.Ink, 24,
+                () => _game.ContinueFromVictory(), 24);
+            _victoryRoot.SetActive(false);
         }
 
-        private void RefreshMilestonePanel()
+        public void ShowVictory()
         {
-            if (_milestoneStats == null) return;
-            bool legendary = _game.AllMilestonesReached;
-            if (_milestoneKicker != null)
+            HideAllModals();
+            if (_victoryRoot != null)
             {
-                _milestoneKicker.text = legendary ? "LEGENDARY SCORE" : "SCORE MILESTONE";
+                _victoryRoot.SetActive(true);
+                _victoryRoot.transform.SetAsLastSibling();
+                RefreshVictory();
             }
-            if (_milestoneTitle != null)
-            {
-                _milestoneTitle.text = "里程碑达成！";
-            }
-            if (_milestoneSubtitle != null)
-            {
-                _milestoneSubtitle.text = $"累计得分突破 {_game.LastMilestoneValue:N0}";
-            }
-            if (_milestoneCopy != null)
-            {
-                _milestoneCopy.text = legendary
-                    ? "全部里程碑已突破。\n商店、连锁、狂热与全中奖励仍会继续叠加。"
-                    : $"下一里程碑 {_game.NextMilestone:N0}。\n回到商店继续强化，连锁与狂热会把分数推得更高。";
-            }
+        }
 
-            _milestoneStats.text =
-                $"本轮得分   {_game.CurrentPhaseScore:N0}   ·   命中   {_game.VolleyHits}/{_game.VolleyTotalBalls}\n" +
-                $"累计得分   {_game.Score.TotalScore:N0}   ·   可用积分   {_game.Score.Credits:N0}\n" +
-                $"最高单轮   {_game.Score.BestVolleyScore:N0}   ·   最高单次   {_game.Score.BestSingleScore:N0}";
-            if (_milestoneContinueButton != null)
+        public void HideVictory()
+        {
+            if (_victoryRoot != null) _victoryRoot.SetActive(false);
+        }
+
+        private void RefreshVictory()
+        {
+            if (_victoryRoot == null || !_victoryRoot.activeSelf || _victoryStats == null) return;
+            _victoryStats.text =
+                $"累计得分   {_game.Score.TotalScore:N0}\n" +
+                $"当前循环   {_game.LoopIndex}   ·   最高循环   {_game.Score.BestLoopScore:N0}\n" +
+                $"最高齐射   {_game.Score.BestVolleyScore:N0}   ·   可用积分   {_game.Score.Credits:N0}";
+            if (_victoryContinueButton != null)
             {
-                _milestoneContinueButton.SetText(legendary ? "继续刷新纪录" : "继续冲分");
+                _victoryContinueButton.SetText(_game.Loop.AttemptComplete
+                    ? "继续 · 兑换并进入下一循环"
+                    : "继续 · 完成本循环剩余齐射");
             }
         }
 
@@ -343,13 +254,13 @@ namespace Pachinko
                 Theme.InkSoft, TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 28f), new Vector2(680f, 26f));
 
             _settingsBestText = UIFactory.Label(card, "Best", "", 19, Theme.Cream.Alpha(0.65f), TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, -20f), new Vector2(660f, 32f));
+                UIFactory.Center, new Vector2(0f, -20f), new Vector2(700f, 52f));
 
             _settingsResetButton = UIFactory.TextButton(card, "Reset", "重置游戏", UIFactory.Center, UIFactory.Center,
                 new Vector2(0f, -98f), new Vector2(360f, 60f), Theme.Red, Theme.Cream, 21, OnResetClicked, 18);
 
             UIFactory.Label(card, "DangerNote",
-                "重置游戏会清空积分、累计得分、最高单轮、里程碑进度、弹珠解锁与库存、\n附魔/技能/奖励洞升级和校准设置，等同重新开始游戏。",
+                "重置游戏会清空累计得分、可用积分、循环进度、最高记录、\n附魔 / 引爆 / 挡板兑换和校准设置，等同重新开始游戏。",
                 14, Theme.InkSoft, TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, -166f), new Vector2(700f, 50f));
 
             UIFactory.TextButton(card, "Close", "关闭", UIFactory.BottomCenter, UIFactory.BottomCenter,
@@ -367,7 +278,9 @@ namespace Pachinko
                 ? "把手机放在你习惯的握持角度，点击“校准水平”，该姿态就会成为新的零点。建议每次更换握持方式后重新校准。"
                 : "电脑或没有加速度计的设备会自动使用键盘 A/D、方向键，或按住屏幕左右半屏来控制倾斜。";
             _settingsInvertButton.SetText($"左右反转：{(_tilt != null && _tilt.Inverted ? "开" : "关")}");
-            _settingsBestText.text = $"最高单轮 {_game.Score.BestVolleyScore:N0} · 最高单次 {_game.Score.BestSingleScore:N0} · 累计 {_game.Score.TotalScore:N0}";
+            _settingsBestText.text =
+                $"第 {_game.LoopIndex} 循环 · 最高循环 {_game.Score.BestLoopScore:N0} · 最高齐射 {_game.Score.BestVolleyScore:N0}\n" +
+                $"累计 {_game.Score.TotalScore:N0} / {_game.GoalScore:N0} · 可用积分 {_game.Score.Credits:N0}";
             if (!_resetConfirm && _settingsResetButton != null)
             {
                 _settingsResetButton.SetText("重置游戏");
@@ -436,9 +349,9 @@ namespace Pachinko
             UIFactory.Image(root, "Edge", Theme.Rounded(2), Theme.Hex(result.hole.color), UIFactory.Center, UIFactory.Center,
                 new Vector2(0f, -102f), new Vector2(380f, 4f)).raycastTarget = false;
 
-            string header = result.jackpotBonus > 0
-                ? $"{result.hole.displayName}  ·  JACKPOT"
-                : $"{result.hole.displayName}  ·  连锁 ×{result.chainMultiplier}";
+            string header = result.comboCount > 1
+                ? $"{result.hole.displayName}  ·  第 {result.comboCount} 连"
+                : $"{result.hole.displayName}  ·  命中";
             UIFactory.Label(root, "Header", header, 19, Theme.Amber,
                 TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 70f), new Vector2(510f, 28f), true);
             UIFactory.Label(root, "Formula", result.Formula, 27, Theme.Cream, TextAnchor.MiddleCenter,
@@ -451,7 +364,7 @@ namespace Pachinko
             StartCoroutine(PopupAnimation(root, group, local));
         }
 
-        /// <summary>弹珠落入空穴：只提示无奖励与连锁中断，不弹出得分面板。</summary>
+        /// <summary>弹珠落入空穴：只提示无奖励与连击中断，不弹出得分面板。</summary>
         public void PlayNoRewardPopup(HoleDef hole, Vector3 worldPosition)
         {
             if (hole == null || _camera == null || _popupLayer == null) return;
@@ -479,32 +392,10 @@ namespace Pachinko
                 TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, 44f), new Vector2(510f, 28f), true);
             UIFactory.Label(root, "Message", "空穴 · 无奖励", 28, Theme.Cream.Alpha(0.85f), TextAnchor.MiddleCenter,
                 UIFactory.Center, new Vector2(0f, 2f), new Vector2(510f, 36f), true);
-            UIFactory.Label(root, "Sub", "连锁中断", 15, Theme.AmberBright.Alpha(0.7f), TextAnchor.MiddleCenter,
+            UIFactory.Label(root, "Sub", "同洞连击中断", 15, Theme.AmberBright.Alpha(0.7f), TextAnchor.MiddleCenter,
                 UIFactory.Center, new Vector2(0f, -34f), new Vector2(510f, 24f), true);
 
             StartCoroutine(PopupAnimation(root, group, local));
-        }
-
-        public void ShowBonusBanner(string title, int amount, Color color)
-        {
-            if (_popupLayer == null) return;
-            var root = UIFactory.Rect(_popupLayer, "BonusBanner", UIFactory.Center, UIFactory.Center,
-                new Vector2(0f, 70f), new Vector2(540f, 112f));
-            var group = root.gameObject.AddComponent<CanvasGroup>();
-            group.alpha = 0f;
-            group.blocksRaycasts = false;
-            group.interactable = false;
-
-            UIFactory.Image(root, "Bg", Theme.Rounded(24), Theme.Ink.Alpha(0.94f), UIFactory.Center, UIFactory.Center,
-                new Vector2(0f, -4f), new Vector2(540f, 112f)).raycastTarget = false;
-            UIFactory.Image(root, "Edge", Theme.Rounded(3), color, UIFactory.Center, UIFactory.Center,
-                new Vector2(0f, -56f), new Vector2(320f, 5f)).raycastTarget = false;
-            UIFactory.Label(root, "Title", title, 24, color, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, 26f), new Vector2(500f, 32f), true);
-            UIFactory.Label(root, "Amount", $"+{amount:N0}", 40, Theme.Cream, TextAnchor.MiddleCenter,
-                UIFactory.Center, new Vector2(0f, -20f), new Vector2(500f, 48f), true);
-
-            StartCoroutine(PopupAnimation(root, group, new Vector2(0f, 70f)));
         }
 
         private IEnumerator PopupAnimation(RectTransform root, CanvasGroup group, Vector2 startPosition)

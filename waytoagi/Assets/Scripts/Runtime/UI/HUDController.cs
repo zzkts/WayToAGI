@@ -20,7 +20,8 @@ namespace Pachinko
         private RectTransform _modalLayer;
         private RectTransform _toastLayer;
 
-        private Text _currentScoreText;
+        private Text _shotScoreText;
+        private Text _loopScoreText;
         private Text _totalScoreText;
         private Text _creditsText;
         private Text _targetText;
@@ -58,10 +59,8 @@ namespace Pachinko
         public bool IsAnyModalOpen =>
             (_menuRoot != null && _menuRoot.activeSelf) ||
             (_shopRoot != null && _shopRoot.activeSelf) ||
-            (_resultRoot != null && _resultRoot.activeSelf) ||
-            (_milestoneRoot != null && _milestoneRoot.activeSelf) ||
-            (_settingsRoot != null && _settingsRoot.activeSelf) ||
-            (_stageRoot != null && _stageRoot.activeSelf);
+            (_victoryRoot != null && _victoryRoot.activeSelf) ||
+            (_settingsRoot != null && _settingsRoot.activeSelf);
 
         public static HUDController Create(GameManager game, GameConfig config, Camera camera, BoardRefs board,
             TiltController tilt, SpringLauncher launcher)
@@ -94,11 +93,9 @@ namespace Pachinko
             BuildComboBadge();
             BuildBottomControls();
             BuildMenu();
-            BuildShop();
-            BuildResultPanel();
-            BuildMilestonePanel();
+            BuildExchange();
+            BuildVictoryPanel();
             BuildSettingsPanel();
-            BuildStageTransition();
             BuildToast();
         }
 
@@ -149,41 +146,40 @@ namespace Pachinko
         private void BuildScoreCard()
         {
             var card = UIFactory.Panel(_hudLayer, "ScoreCard", UIFactory.TopLeft, UIFactory.TopLeft,
-                new Vector2(24f, -24f), new Vector2(372f, 254f), Theme.Panel.Alpha(0.94f), 26, true, 7f);
+                new Vector2(24f, -24f), new Vector2(372f, 312f), Theme.Panel.Alpha(0.94f), 26, true, 7f);
 
             UIFactory.RoundedRectOnUI(card, "Accent", new Vector2(20f, -20f), new Vector2(5f, 34f), Theme.Amber, 3);
 
             var content = UIFactory.Rect(card, "Content", UIFactory.TopLeft, UIFactory.TopLeft,
-                new Vector2(24f, -18f), new Vector2(324f, 218f));
+                new Vector2(24f, -18f), new Vector2(324f, 280f));
 
-            CreateScoreRow(content, "本次得分", 0f, out _currentScoreText, Theme.Cream, 30);
-            CreateScoreRow(content, "累计得分", -62f, out _totalScoreText, Theme.Cream, 30);
-            CreateScoreRow(content, "可用积分", -124f, out _creditsText, Theme.AmberBright, 34);
+            CreateScoreRow(content, "本次齐射", 0f, out _shotScoreText, Theme.Cream, 28);
+            CreateScoreRow(content, "本循环得分", -54f, out _loopScoreText, Theme.Cream, 28);
+            CreateScoreRow(content, "累计得分", -108f, out _totalScoreText, Theme.Cream, 28);
+            CreateScoreRow(content, "可用积分", -162f, out _creditsText, Theme.AmberBright, 33);
 
             var progressBg = UIFactory.Image(content, "ProgressBg", Theme.Rounded(4), Theme.Ink.Alpha(0.18f),
-                UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(0f, -190f), new Vector2(324f, 8f));
+                UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(0f, -232f), new Vector2(324f, 8f));
             progressBg.raycastTarget = false;
             var fillImage = UIFactory.Image(content, "ProgressFill", Theme.Rounded(4), Theme.Amber,
-                UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(0f, -190f), new Vector2(324f, 8f));
+                UIFactory.TopLeft, UIFactory.TopLeft, new Vector2(0f, -232f), new Vector2(324f, 8f));
             fillImage.type = Image.Type.Filled;
             fillImage.fillMethod = Image.FillMethod.Horizontal;
             fillImage.fillOrigin = 0;
             fillImage.fillAmount = 0f;
             fillImage.raycastTarget = false;
             _progressFill = fillImage;
-            string target = _game != null && _game.NextMilestone > 0
-                ? $"下一里程碑 {_game.NextMilestone:N0}"
-                : "传奇冲分";
-            _targetText = UIFactory.Label(content, "Target", target, 16, Theme.Cream.Alpha(0.52f),
-                TextAnchor.MiddleLeft, UIFactory.TopLeft, new Vector2(0f, -203f), new Vector2(324f, 24f));
+
+            _targetText = UIFactory.Label(content, "Target", $"通关目标 {_game.GoalScore:N0}", 16, Theme.Cream.Alpha(0.52f),
+                TextAnchor.MiddleLeft, UIFactory.TopLeft, new Vector2(0f, -246f), new Vector2(324f, 24f));
         }
 
         private void CreateScoreRow(RectTransform parent, string label, float y, out Text value, Color valueColor, int size)
         {
-            UIFactory.Label(parent, label + "Label", label, 21, Theme.InkSoft, TextAnchor.MiddleLeft,
-                UIFactory.TopLeft, new Vector2(0f, y), new Vector2(130f, 32f));
+            UIFactory.Label(parent, label + "Label", label, 20, Theme.InkSoft, TextAnchor.MiddleLeft,
+                UIFactory.TopLeft, new Vector2(0f, y), new Vector2(140f, 32f));
             value = UIFactory.Label(parent, label + "Value", "0", size, valueColor, TextAnchor.MiddleRight,
-                UIFactory.TopLeft, new Vector2(154f, y), new Vector2(170f, 38f), true);
+                UIFactory.TopLeft, new Vector2(150f, y), new Vector2(174f, 38f), true);
         }
 
         private void BuildBallCard()
@@ -199,12 +195,12 @@ namespace Pachinko
                 new Vector2(20f, -22f), 50f).transform.SetAsFirstSibling();
             _ballNameText = UIFactory.Label(card, "BallName", "标准弹珠", 24, Theme.Cream, TextAnchor.MiddleLeft,
                 UIFactory.TopLeft, new Vector2(78f, -32f), new Vector2(190f, 30f), true);
-            _ballDetailText = UIFactory.Label(card, "BallDetail", "×1 · 等待装填", 17, Theme.Amber, TextAnchor.MiddleLeft,
+            _ballDetailText = UIFactory.Label(card, "BallDetail", "倍率 ×1", 17, Theme.Amber, TextAnchor.MiddleLeft,
                 UIFactory.TopLeft, new Vector2(78f, -64f), new Vector2(205f, 24f));
 
             var magazinePanel = UIFactory.Panel(_hudLayer, "MagazinePanel", UIFactory.TopRight, UIFactory.TopRight,
                 new Vector2(-24f, -160f), new Vector2(304f, 46f), Theme.Panel.Alpha(0.9f), 16, false);
-            UIFactory.Label(magazinePanel, "MagazineLabel", "弹仓", 13, Theme.Cream.Alpha(0.48f), TextAnchor.MiddleLeft,
+            UIFactory.Label(magazinePanel, "MagazineLabel", "齐射", 13, Theme.Cream.Alpha(0.48f), TextAnchor.MiddleLeft,
                 UIFactory.TopLeft, new Vector2(14f, -11f), new Vector2(40f, 24f));
             for (int i = 0; i < 14; i++)
             {
@@ -277,13 +273,13 @@ namespace Pachinko
                 UIFactory.Center, new Vector2(178f, -38f), new Vector2(30f, 22f));
 
             _phasePanel = UIFactory.Panel(_hudLayer, "PhasePanel", UIFactory.BottomRight, UIFactory.BottomRight,
-                new Vector2(-28f, 28f), new Vector2(224f, 86f), Theme.Teal.Alpha(0.95f), 24, true, 6f);
+                new Vector2(-28f, 28f), new Vector2(250f, 86f), Theme.Teal.Alpha(0.95f), 24, true, 6f);
             UIFactory.Circle(_phasePanel, "PhaseDot", Theme.AmberBright, UIFactory.TopLeft, UIFactory.TopLeft,
                 new Vector2(20f, -24f), 16f).raycastTarget = false;
-            _phaseTitleText = UIFactory.Label(_phasePanel, "PhaseTitle", "发射阶段", 24, Theme.Cream, TextAnchor.MiddleLeft,
-                UIFactory.TopLeft, new Vector2(44f, -13f), new Vector2(160f, 32f), true);
-            _phaseDetailText = UIFactory.Label(_phasePanel, "PhaseDetail", "弹仓 0 / 0 颗", 15, Theme.Cream.Alpha(0.7f),
-                TextAnchor.MiddleLeft, UIFactory.TopLeft, new Vector2(22f, -48f), new Vector2(190f, 24f));
+            _phaseTitleText = UIFactory.Label(_phasePanel, "PhaseTitle", "第 1 循环", 24, Theme.Cream, TextAnchor.MiddleLeft,
+                UIFactory.TopLeft, new Vector2(44f, -13f), new Vector2(190f, 32f), true);
+            _phaseDetailText = UIFactory.Label(_phasePanel, "PhaseDetail", "", 15, Theme.Cream.Alpha(0.7f),
+                TextAnchor.MiddleLeft, UIFactory.TopLeft, new Vector2(22f, -48f), new Vector2(216f, 24f));
             _phasePanel.gameObject.SetActive(false);
         }
 
@@ -295,61 +291,12 @@ namespace Pachinko
             RefreshMenuSummary();
         }
 
-        public void ShowShop(bool firstTime)
-        {
-            HideAllModals();
-            if (_shopRoot != null) _shopRoot.SetActive(true);
-            _shopFirstTime = firstTime;
-            RefreshShop();
-            RefreshAll();
-        }
-
-        public void HideShop()
-        {
-            if (_shopRoot != null) _shopRoot.SetActive(false);
-        }
-
-        public void ShowResult(ScoreResult result, bool hit, string missMessage)
-        {
-            HideAllModals();
-            _lastResult = result;
-            _lastResultHit = hit;
-            _lastMissMessage = missMessage;
-            if (_resultRoot != null)
-            {
-                _resultRoot.SetActive(true);
-                RefreshResultPanel(result, hit, missMessage);
-            }
-        }
-
-        public void HideResult()
-        {
-            if (_resultRoot != null) _resultRoot.SetActive(false);
-        }
-
-        public void ShowMilestone()
-        {
-            HideAllModals();
-            if (_milestoneRoot != null)
-            {
-                _milestoneRoot.SetActive(true);
-                RefreshMilestonePanel();
-            }
-        }
-
-        public void HideMilestone()
-        {
-            if (_milestoneRoot != null) _milestoneRoot.SetActive(false);
-        }
-
         public void HideAllModals()
         {
             if (_menuRoot != null) _menuRoot.SetActive(false);
             if (_shopRoot != null) _shopRoot.SetActive(false);
-            if (_resultRoot != null) _resultRoot.SetActive(false);
-            if (_milestoneRoot != null) _milestoneRoot.SetActive(false);
+            if (_victoryRoot != null) _victoryRoot.SetActive(false);
             if (_settingsRoot != null) _settingsRoot.SetActive(false);
-            if (_stageRoot != null) _stageRoot.SetActive(false);
             _settingsOpen = false;
         }
 
@@ -357,127 +304,102 @@ namespace Pachinko
         {
             if (_game == null) return;
             var score = _game.Score;
-            var ball = _game.HighlightBall ?? _config.GetBall("ball_01");
 
-            if (_currentScoreText != null) _currentScoreText.text = _game.CurrentShotScore.ToString("N0");
+            if (_shotScoreText != null) _shotScoreText.text = _game.CurrentShotScore.ToString("N0");
+            if (_loopScoreText != null) _loopScoreText.text = _game.LoopScore.ToString("N0");
             if (_totalScoreText != null) _totalScoreText.text = score.TotalScore.ToString("N0");
             if (_creditsText != null) _creditsText.text = score.Credits.ToString("N0");
-            int nextMilestone = _game.NextMilestone;
-            if (_progressFill != null)
-            {
-                if (nextMilestone <= 0)
-                {
-                    _progressFill.fillAmount = 1f;
-                }
-                else
-                {
-                    int previous = _game.PreviousMilestone;
-                    float span = Mathf.Max(1f, nextMilestone - previous);
-                    _progressFill.fillAmount = Mathf.Clamp01((score.TotalScore - previous) / span);
-                }
-            }
+            if (_progressFill != null) _progressFill.fillAmount = _game.GoalProgress;
             if (_targetText != null)
             {
-                _targetText.text = nextMilestone > 0
-                    ? $"下一里程碑 {nextMilestone:N0} · 还差 {Mathf.Max(0, nextMilestone - score.TotalScore):N0}"
-                    : "传奇分数 · 继续刷新纪录";
+                _targetText.text = _game.GoalReached
+                    ? $"已通关 {_game.GoalScore:N0} · 无尽模式继续冲分"
+                    : $"通关目标 {_game.GoalScore:N0} · 还差 {_game.GoalRemaining:N0}";
             }
 
             if (_comboRoot != null)
             {
-                bool show = score.ChainCount >= 2 || score.Streak >= 2;
+                bool show = score.Streak >= 2 &&
+                    (_game.State == GameState.Aim || _game.State == GameState.BallFlight || _game.State == GameState.Resolving);
                 _comboRoot.SetActive(show);
                 if (show && _comboText != null)
                 {
-                    if (score.FeverActive)
+                    int combo = score.ComboMultiplier;
+                    _comboText.text = $"同洞连击 ×{combo} · 第 {score.Streak} 连";
+                    if (_comboBadgeImage != null)
                     {
-                        _comboText.text = $"FEVER ×{score.FeverMultiplier} · 连锁 ×{score.ChainMultiplier}";
-                        if (_comboBadgeImage != null) _comboBadgeImage.color = Theme.Red;
-                        _comboText.color = Theme.Cream;
+                        _comboBadgeImage.color = combo >= ScoreRules.ComboCap ? Theme.Red : Theme.Amber;
                     }
-                    else
-                    {
-                        string text = $"连锁 ×{score.ChainMultiplier}";
-                        if (score.Streak >= 2) text += $" · 同洞 ×{score.ComboMultiplier}";
-                        _comboText.text = text;
-                        if (_comboBadgeImage != null) _comboBadgeImage.color = Theme.Amber;
-                        _comboText.color = Theme.Ink;
-                    }
+                    _comboText.color = combo >= ScoreRules.ComboCap ? Theme.Cream : Theme.Ink;
                 }
             }
 
-            if (ball != null)
+            var enchant = _game.ActiveEnchant;
+            if (_ballDot != null) _ballDot.color = _game.CurrentBallColor;
+            if (_ballNameText != null)
             {
-                var color = Theme.BallColor(ball);
-                if (_ballDot != null) _ballDot.color = color;
-                if (_ballNameText != null)
+                _ballNameText.text = enchant != null ? enchant.displayName : "标准弹珠";
+                _ballNameText.color = Theme.Cream;
+            }
+            if (_ballCaptionText != null)
+            {
+                switch (_game.State)
                 {
-                    _ballNameText.text = _game.IsLaunchPhase ? $"{_game.VolleyTotalBalls} 颗齐射" : "等待补给";
-                    _ballNameText.color = Theme.Cream;
+                    case GameState.Aim:
+                        _ballCaptionText.text = $"发射阶段 · 第 {_game.LoopIndex} 循环";
+                        break;
+                    case GameState.BallFlight:
+                        _ballCaptionText.text = "发射阶段 · 齐射中";
+                        break;
+                    case GameState.Resolving:
+                        _ballCaptionText.text = "发射阶段 · 本轮结算";
+                        break;
+                    case GameState.Exchange:
+                        _ballCaptionText.text = "循环结束 · 兑换中";
+                        break;
+                    case GameState.Victory:
+                        _ballCaptionText.text = "通关目标达成";
+                        break;
+                    default:
+                        _ballCaptionText.text = "等待出发";
+                        break;
                 }
-                if (_ballCaptionText != null)
-                {
-                    switch (_game.State)
-                    {
-                        case GameState.Aim:
-                            _ballCaptionText.text = "发射阶段 · 待发射";
-                            break;
-                        case GameState.BallFlight:
-                            _ballCaptionText.text = "发射阶段 · 齐射中";
-                            break;
-                        case GameState.Resolving:
-                            _ballCaptionText.text = "发射阶段 · 本轮结算";
-                            break;
-                        case GameState.Milestone:
-                            _ballCaptionText.text = "发射阶段 · 本轮结束";
-                            break;
-                        default:
-                            _ballCaptionText.text = "待装填弹珠";
-                            break;
-                    }
-                }
-                if (_ballDetailText != null)
-                {
-                    if (_game.IsLaunchPhase)
-                    {
-                        string shield = _game.MissShields > 0 ? $" · 护盾 {_game.MissShields}" : "";
-                        _ballDetailText.text = _game.State == GameState.Aim
-                            ? $"一次拉杆 · 全部发射{shield}"
-                            : $"已落洞 {_game.VolleyHits}/{_game.VolleyTotalBalls}{shield}";
-                        _ballDetailText.color = Theme.Amber;
-                    }
-                    else
-                    {
-                        _ballDetailText.text = "完成补给后全部装填";
-                        _ballDetailText.color = Theme.Cream.Alpha(0.55f);
-                    }
-                }
+            }
+            if (_ballDetailText != null)
+            {
+                string explosion = _game.SaveData.explosionUnlocked ? " · 引爆已解锁" : "";
+                _ballDetailText.text = $"弹珠倍率 ×{_game.BallMultiplier}{explosion}";
+                _ballDetailText.color = Theme.Amber;
             }
 
             RefreshMagazinePips();
             if (_phasePanel != null)
             {
-                bool showPhase = _game.IsLaunchPhase;
+                bool showPhase = _game.State != GameState.Menu;
                 _phasePanel.gameObject.SetActive(showPhase);
                 if (showPhase)
                 {
-                    _phaseTitleText.text = "发射阶段";
+                    _phaseTitleText.text = $"第 {_game.LoopIndex} 循环";
                     switch (_game.State)
                     {
                         case GameState.Aim:
-                            _phaseDetailText.text = $"齐射 {_game.VolleyTotalBalls} 颗待发";
+                            // 不显示本循环总齐射次数，保留「循环何时结束」的悬念。
+                            _phaseDetailText.text = $"第 {_game.CurrentVolleyNumber} 次齐射 · 目标 {_game.LoopThreshold:N0}";
                             break;
                         case GameState.BallFlight:
-                            _phaseDetailText.text = $"落洞 {_game.VolleyHits}/{_game.VolleyTotalBalls}";
+                            _phaseDetailText.text = $"落洞 {_game.VolleyHits}/{_game.VolleyTotalBalls} · 本循环 {_game.LoopScore:N0}";
                             break;
                         case GameState.Resolving:
-                            _phaseDetailText.text = "本轮结算中";
+                            _phaseDetailText.text = "齐射结算中…";
                             break;
-                        case GameState.Milestone:
-                            _phaseDetailText.text = "冲分结算";
+                        case GameState.Victory:
+                            _phaseDetailText.text = $"累计积分突破 {_game.GoalScore:N0}";
+                            break;
+                        case GameState.Exchange:
+                            _phaseDetailText.text = "本循环结束 · 兑换中";
                             break;
                         default:
-                            _phaseDetailText.text = $"弹仓 {_game.VolleyTotalBalls} 颗";
+                            _phaseDetailText.text = $"目标 {_game.LoopThreshold:N0}";
                             break;
                     }
                 }
@@ -485,29 +407,31 @@ namespace Pachinko
 
             if (_settingsButton != null)
             {
-                _settingsButton.SetInteractable(_game.State == GameState.Aim || _game.State == GameState.Menu ||
-                                                _game.State == GameState.Result || _game.State == GameState.Milestone);
+                _settingsButton.SetInteractable(_game.State == GameState.Menu || _game.State == GameState.Aim);
             }
             if (_tiltSourceText != null)
             {
                 _tiltSourceText.text = _tilt != null && _tilt.HasSensor ? "重力感应" : "A / D 或按住左右屏";
             }
 
-            RefreshShop();
+            RefreshExchange();
+            RefreshVictory();
         }
 
         private void RefreshMagazinePips()
         {
             if (_magazinePips == null) return;
-            int count = Mathf.Min(_magazinePips.Count, _game.Magazine.Count);
+            int count = _game.State == GameState.Aim || _game.State == GameState.BallFlight || _game.State == GameState.Resolving
+                ? _game.VolleyTotalBalls
+                : 0;
+            count = Mathf.Min(_magazinePips.Count, count);
             for (int i = 0; i < _magazinePips.Count; i++)
             {
                 var pip = _magazinePips[i];
                 bool visible = i < count;
                 pip.gameObject.SetActive(visible);
                 if (!visible) continue;
-                var ball = _game.Magazine[i];
-                pip.color = ball != null ? Theme.BallColor(ball) : Theme.Cream;
+                pip.color = _game.CurrentBallColor;
                 float scale = i == 0 ? 1.15f : 1f;
                 pip.rectTransform.localScale = new Vector3(scale, scale, 1f);
             }
@@ -615,9 +539,9 @@ namespace Pachinko
                 {
                     HideSettings();
                 }
-                else if (_shopRoot != null && _shopRoot.activeSelf && _game.State == GameState.Shop)
+                else if (_shopRoot != null && _shopRoot.activeSelf && _game.State == GameState.Exchange)
                 {
-                    _game.CloseShop();
+                    _game.CloseExchange();
                 }
             }
         }
@@ -649,6 +573,11 @@ namespace Pachinko
             {
                 _promptText.text = "本轮结算中…";
                 _promptText.color = Theme.Cream;
+            }
+            else if (state == GameState.Exchange)
+            {
+                _promptText.text = "循环结束 · 兑换只消耗可用积分";
+                _promptText.color = Theme.AmberBright;
             }
             else if (state == GameState.Menu)
             {
@@ -683,10 +612,10 @@ namespace Pachinko
         private void ShowSettings()
         {
             if (_game == null) return;
-            if (_game.State != GameState.Aim && _game.State != GameState.Menu &&
-                _game.State != GameState.Result && _game.State != GameState.Milestone) return;
+            if (_game.State != GameState.Aim && _game.State != GameState.Menu) return;
             if (_settingsRoot == null) return;
             _settingsRoot.SetActive(true);
+            _settingsRoot.transform.SetAsLastSibling();
             _settingsOpen = true;
             _resetConfirm = false;
             RefreshSettings();

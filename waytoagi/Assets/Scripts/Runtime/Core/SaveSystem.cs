@@ -3,46 +3,24 @@ using UnityEngine;
 
 namespace Pachinko
 {
-    [Serializable]
-    public class BallStockEntry
-    {
-        public string ballId;
-        public int count;
-    }
-
-    [Serializable]
-    public class HoleProgressEntry
-    {
-        public string holeId;
-        public int level;
-    }
-
-    [Serializable]
-    public class HoleSkillEntry
-    {
-        public string holeId;
-        public int level;
-    }
-
+    /// <summary>
+    /// V5 存档：动态循环进度 + 附魔/引爆/挡板三项永久兑换 + 倾斜校准。
+    /// 弹珠库存、洞口升级、旧附魔与技能等级等 V2 字段已删除。
+    /// </summary>
     [Serializable]
     public class SaveData
     {
-        public int version = 4;
+        public int version = 5;
         public int totalScore;
         public int credits;
         public int bestSingleScore;
         public int bestVolleyScore;
-        public int milestoneIndex;
-        public int emberLevel;
-        public int frostLevel;
-        public int gildLevel;
-        public int splitLevel;
-        public int bounceLevel;
-        public int magnetLevel;
-        public string[] unlockedBalls;
-        public BallStockEntry[] ballStock;
-        public HoleProgressEntry[] holeProgress;
-        public HoleSkillEntry[] holeSkills;
+        public int bestLoopScore;
+        public int loopIndex = 1;
+        public bool goalReached;
+        public int enchantTier;
+        public bool explosionUnlocked;
+        public int baffleCount = 1;
         public float tiltCalibration;
         public bool tiltInverted;
 
@@ -50,22 +28,17 @@ namespace Pachinko
         {
             var data = new SaveData
             {
-                version = 4,
+                version = 5,
                 totalScore = 0,
                 credits = Mathf.Max(0, config.economy.startingCredits),
                 bestSingleScore = 0,
                 bestVolleyScore = 0,
-                milestoneIndex = 0,
-                emberLevel = 0,
-                frostLevel = 0,
-                gildLevel = 0,
-                splitLevel = 0,
-                bounceLevel = 0,
-                magnetLevel = 0,
-                unlockedBalls = new[] { "ball_01" },
-                ballStock = Array.Empty<BallStockEntry>(),
-                holeProgress = Array.Empty<HoleProgressEntry>(),
-                holeSkills = Array.Empty<HoleSkillEntry>(),
+                bestLoopScore = 0,
+                loopIndex = 1,
+                goalReached = false,
+                enchantTier = 0,
+                explosionUnlocked = false,
+                baffleCount = Mathf.Clamp(config.economy.startingBaffleCount, 0, config.MaxBaffleCount),
                 tiltCalibration = 0f,
                 tiltInverted = config.tilt != null && config.tilt.invert
             };
@@ -75,184 +48,37 @@ namespace Pachinko
 
         public void EnsureIntegrity(GameConfig config)
         {
-            if (version < 4) version = 4;
+            // V4 及更早的存档没有循环与兑换字段，保留累计得分/可用积分后按新规则补齐。
+            if (version < 5)
+            {
+                version = 5;
+                loopIndex = 1;
+                enchantTier = 0;
+                explosionUnlocked = false;
+                baffleCount = config != null && config.economy != null
+                    ? Mathf.Clamp(config.economy.startingBaffleCount, 0, config.MaxBaffleCount)
+                    : 1;
+                goalReached = false;
+            }
+
             totalScore = Mathf.Max(0, totalScore);
             credits = Mathf.Max(0, credits);
             bestSingleScore = Mathf.Max(0, bestSingleScore);
             bestVolleyScore = Mathf.Max(0, bestVolleyScore);
-            milestoneIndex = Mathf.Clamp(milestoneIndex, 0, ScoreRules.MilestoneCount);
-            emberLevel = Mathf.Clamp(emberLevel, 0, UpgradeCatalog.MaxEnchantLevel);
-            frostLevel = Mathf.Clamp(frostLevel, 0, UpgradeCatalog.MaxEnchantLevel);
-            gildLevel = Mathf.Clamp(gildLevel, 0, UpgradeCatalog.MaxEnchantLevel);
-            splitLevel = Mathf.Clamp(splitLevel, 0, UpgradeCatalog.MaxBallSkillLevel);
-            bounceLevel = Mathf.Clamp(bounceLevel, 0, UpgradeCatalog.MaxBallSkillLevel);
-            magnetLevel = Mathf.Clamp(magnetLevel, 0, UpgradeCatalog.MaxBallSkillLevel);
-
-            if (unlockedBalls == null || unlockedBalls.Length == 0)
+            bestLoopScore = Mathf.Max(0, bestLoopScore);
+            loopIndex = Mathf.Max(1, loopIndex);
+            enchantTier = Mathf.Clamp(enchantTier, 0, config != null ? config.MaxEnchantTier : 0);
+            baffleCount = Mathf.Clamp(baffleCount, 0, config != null ? config.MaxBaffleCount : 0);
+            if (config != null && config.loop != null && totalScore >= config.loop.goalScore)
             {
-                unlockedBalls = new[] { "ball_01" };
+                goalReached = true;
             }
-            else if (Array.IndexOf(unlockedBalls, "ball_01") < 0)
-            {
-                Array.Resize(ref unlockedBalls, unlockedBalls.Length + 1);
-                unlockedBalls[unlockedBalls.Length - 1] = "ball_01";
-            }
-
-            if (ballStock == null) ballStock = Array.Empty<BallStockEntry>();
-            if (holeProgress == null) holeProgress = Array.Empty<HoleProgressEntry>();
-            if (holeSkills == null) holeSkills = Array.Empty<HoleSkillEntry>();
-
-            if (config == null || config.balls == null || config.holes == null) return;
-
-            foreach (var ball in config.balls)
-            {
-                if (ball == null) continue;
-                EnsureStockEntry(ball.id);
-                if (ball.alwaysAvailable && !IsBallUnlocked(ball.id))
-                {
-                    AddUnlockedBall(ball.id);
-                }
-            }
-            foreach (var hole in config.holes)
-            {
-                if (hole == null) continue;
-                GetHoleLevel(hole.id);
-                GetHoleSkillLevel(hole.id);
-            }
-        }
-
-        private BallStockEntry EnsureStockEntry(string ballId)
-        {
-            foreach (var entry in ballStock)
-            {
-                if (entry != null && entry.ballId == ballId)
-                {
-                    entry.count = Mathf.Max(0, entry.count);
-                    return entry;
-                }
-            }
-
-            var created = new BallStockEntry { ballId = ballId, count = 0 };
-            Array.Resize(ref ballStock, ballStock.Length + 1);
-            ballStock[ballStock.Length - 1] = created;
-            return created;
-        }
-
-        public bool IsBallUnlocked(string ballId)
-        {
-            if (unlockedBalls == null) return ballId == "ball_01";
-            return Array.IndexOf(unlockedBalls, ballId) >= 0;
-        }
-
-        public void AddUnlockedBall(string ballId)
-        {
-            if (IsBallUnlocked(ballId)) return;
-            Array.Resize(ref unlockedBalls, unlockedBalls.Length + 1);
-            unlockedBalls[unlockedBalls.Length - 1] = ballId;
-        }
-
-        public int GetStock(string ballId)
-        {
-            if (ballStock == null) return 0;
-            foreach (var entry in ballStock)
-            {
-                if (entry != null && entry.ballId == ballId) return Mathf.Max(0, entry.count);
-            }
-            return 0;
-        }
-
-        public void AddStock(string ballId, int amount)
-        {
-            if (amount == 0) return;
-            for (int i = 0; i < ballStock.Length; i++)
-            {
-                if (ballStock[i] != null && ballStock[i].ballId == ballId)
-                {
-                    ballStock[i].count = Mathf.Max(0, ballStock[i].count + amount);
-                    return;
-                }
-            }
-            EnsureStockEntry(ballId).count += amount;
-        }
-
-        public bool ConsumeStock(string ballId, int amount = 1)
-        {
-            amount = Mathf.Max(1, amount);
-            for (int i = 0; i < ballStock.Length; i++)
-            {
-                if (ballStock[i] != null && ballStock[i].ballId == ballId)
-                {
-                    if (ballStock[i].count < amount) return false;
-                    ballStock[i].count -= amount;
-                    return true;
-                }
-            }
-            return false;
-        }
-
-        public int GetHoleLevel(string holeId)
-        {
-            if (holeProgress == null) holeProgress = Array.Empty<HoleProgressEntry>();
-            foreach (var entry in holeProgress)
-            {
-                if (entry != null && entry.holeId == holeId) return Mathf.Max(0, entry.level);
-            }
-
-            var created = new HoleProgressEntry { holeId = holeId, level = 0 };
-            Array.Resize(ref holeProgress, holeProgress.Length + 1);
-            holeProgress[holeProgress.Length - 1] = created;
-            return 0;
-        }
-
-        public void SetHoleLevel(string holeId, int level)
-        {
-            for (int i = 0; i < holeProgress.Length; i++)
-            {
-                if (holeProgress[i] != null && holeProgress[i].holeId == holeId)
-                {
-                    holeProgress[i].level = Mathf.Max(0, level);
-                    return;
-                }
-            }
-            GetHoleLevel(holeId);
-            SetHoleLevel(holeId, level);
-        }
-
-        public int GetHoleSkillLevel(string holeId)
-        {
-            if (holeSkills == null) holeSkills = Array.Empty<HoleSkillEntry>();
-            foreach (var entry in holeSkills)
-            {
-                if (entry != null && entry.holeId == holeId)
-                {
-                    return Mathf.Clamp(entry.level, 0, UpgradeCatalog.MaxHoleSkillLevel);
-                }
-            }
-
-            var created = new HoleSkillEntry { holeId = holeId, level = 0 };
-            Array.Resize(ref holeSkills, holeSkills.Length + 1);
-            holeSkills[holeSkills.Length - 1] = created;
-            return 0;
-        }
-
-        public void SetHoleSkillLevel(string holeId, int level)
-        {
-            if (holeSkills == null) holeSkills = Array.Empty<HoleSkillEntry>();
-            for (int i = 0; i < holeSkills.Length; i++)
-            {
-                if (holeSkills[i] != null && holeSkills[i].holeId == holeId)
-                {
-                    holeSkills[i].level = Mathf.Clamp(level, 0, UpgradeCatalog.MaxHoleSkillLevel);
-                    return;
-                }
-            }
-            GetHoleSkillLevel(holeId);
-            SetHoleSkillLevel(holeId, level);
         }
     }
 
     public static class SaveSystem
     {
+        // 沿用 V2 的键名，确保旧存档可以迁移到 V5，而不是静默丢失。
         private const string PrefsKey = "pachinko_mvp_save_v2";
         private static bool _warned;
 

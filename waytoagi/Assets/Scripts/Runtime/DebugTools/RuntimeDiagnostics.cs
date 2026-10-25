@@ -7,7 +7,7 @@ namespace Pachinko
 {
     /// <summary>
     /// 自动化验收辅助：带 -autoplay 启动时走完
-    /// 商店阶段 → 阶段过场 → 弹簧连弹 → 冲分结算 → 商店阶段，并截图。
+    /// 菜单 → 发射 → 齐射结算 → 循环兑换 → 下一循环，并截图。
     /// 正常玩家流程不会创建此组件。
     /// </summary>
     public class RuntimeDiagnostics : MonoBehaviour
@@ -55,23 +55,7 @@ namespace Pachinko
 
             _game.StartGame();
             yield return new WaitForSeconds(0.45f);
-            yield return Capture("shop_initial");
-
-            _game.DebugGrantCredits(6000);
-            _game.HandleUnlockBall("ball_02");
-            _game.HandleBuyBall("ball_02");
-            _game.HandleBuyBall("ball_02");
-            _game.HandleBuyBall("ball_02");
-            _game.HandleUpgradeHole("hole_07");
-            yield return new WaitForSeconds(0.35f);
-            yield return Capture("shop_loaded");
-
-            _game.CloseShop();
-            yield return new WaitForSeconds(0.4f);
-            yield return Capture("stage_launch");
-            _game.DebugContinueStage();
-            yield return new WaitForSeconds(0.4f);
-            yield return Capture("aim_volley_rack");
+            yield return Capture("aim_first_volley");
 
             _game.Hud.DebugShowSettings();
             yield return new WaitForSeconds(0.3f);
@@ -79,80 +63,74 @@ namespace Pachinko
             _game.Hud.DebugHideSettings();
             yield return new WaitForSeconds(0.2f);
 
-            // 一次拉杆，弹簧连续回弹，整槽弹珠快速出膛。
-            _game.DebugLaunch(0.72f);
-            yield return new WaitForSeconds(0.28f);
-            yield return Capture("volley_flight");
-            yield return new WaitForSeconds(0.25f);
+            yield return PlayVolley(0.72f, 6, "volley_flight", "score_popup");
 
-            // 正常自动化为了稳定跑完阶段，把所有在飞弹珠结算到 7 号洞；
+            // 一循环有多轮齐射：持续打到兑换面板出现。
+            int guard = 0;
+            while (_game.State == GameState.Aim && guard < 10)
+            {
+                guard++;
+                yield return PlayVolley(0.68f, 6, null, null);
+            }
+
+            if (_game.State == GameState.Exchange)
+            {
+                yield return Capture("loop_exchange");
+
+                // 用 QA 积分展示三项永久兑换全部可用时的状态。
+                _game.DebugGrantCredits(200000);
+                _game.HandleUnlockEnchant();
+                _game.HandleUnlockEnchant();
+                _game.HandleUnlockExplosion();
+                _game.HandleReduceBaffle();
+                _game.Hud.HideToast();
+                yield return new WaitForSeconds(0.3f);
+                yield return Capture("loop_exchange_purchased");
+
+                _game.DebugContinueStage();
+                yield return new WaitForSeconds(0.6f);
+                yield return Capture("next_loop_aim");
+            }
+
+            yield return new WaitForEndOfFrame();
+            Debug.Log($"[Diagnostics] final state={_game.State}, loop={_game.LoopIndex}, threshold={_game.LoopThreshold}, " +
+                      $"loopScore={_game.LoopScore}, total={_game.Score.TotalScore}, credits={_game.Score.Credits}, " +
+                      $"goal={_game.GoalReached}, enchantTier={_game.Shop.EnchantTier}, explosion={_game.Shop.ExplosionUnlocked}, " +
+                      $"baffles={_game.SaveData.baffleCount}/{_game.Board.Baffles.Count}, bestLoop={_game.Score.BestLoopScore}, " +
+                      $"bestVolley={_game.Score.BestVolleyScore}, volleys={_game.LoopVolleysDone}/{_game.LoopVolleys}, " +
+                      $"volleyBalls={_game.VolleyTotalBalls}, hits={_game.VolleyHits}, resolved={_game.VolleyResolved}");
+            yield return new WaitForSeconds(0.4f);
+            Application.Quit();
+        }
+
+        /// <summary>完成一次齐射并等待进入下一状态。自动化默认把弹珠结算到指定奖励洞。</summary>
+        private IEnumerator PlayVolley(float charge, int holeIndex, string flightCapture, string scoreCapture)
+        {
+            if (_game.State != GameState.Aim) yield break;
+            _game.DebugLaunch(charge);
+            yield return new WaitForSeconds(0.28f);
+            if (!string.IsNullOrEmpty(flightCapture)) yield return Capture(flightCapture);
+
             // -physical-volley 模式不强制结算，用来确认整槽齐射能靠物理全部落洞。
             if (!_physicalOnly && _game.State == GameState.BallFlight)
             {
-                _game.DebugResolveAllActive(6);
+                _game.DebugResolveAllActive(holeIndex);
                 yield return new WaitForSeconds(0.22f);
-                yield return Capture("score_burst");
+                if (!string.IsNullOrEmpty(scoreCapture)) yield return Capture(scoreCapture);
             }
 
-            float timeout = _physicalOnly ? 25f : 5f;
+            float timeout = _physicalOnly ? 25f : 6f;
             while (timeout > 0f &&
-                   _game.State != GameState.Milestone &&
-                   _game.State != GameState.StageTransition &&
-                   _game.State != GameState.Shop)
+                   (_game.State == GameState.BallFlight || _game.State == GameState.Resolving))
             {
                 timeout -= Time.unscaledDeltaTime;
                 yield return null;
             }
 
-            if (_game.State == GameState.Milestone)
+            if (timeout <= 0f)
             {
-                yield return new WaitForSeconds(0.25f);
-                yield return Capture("milestone");
-                _game.ContinueFromMilestone();
-                yield return new WaitForSeconds(0.4f);
+                Debug.LogWarning($"[Diagnostics] 齐射等待超时，state={_game.State}");
             }
-
-            if (_game.State == GameState.StageTransition)
-            {
-                yield return Capture("stage_shop");
-                _game.DebugContinueStage();
-                yield return new WaitForSeconds(0.4f);
-            }
-
-            if (_game.State == GameState.Shop)
-            {
-                yield return Capture("shop_returned");
-
-                // 用返回商店后的 QA 积分展示完整商店升级页签，不改变已经打完的本轮数据。
-                _game.DebugGrantCredits(20000);
-                _game.HandleUpgradeEnchant(EnchantId.Ember);
-                _game.HandleUpgradeEnchant(EnchantId.Frost);
-                _game.HandleUpgradeEnchant(EnchantId.Gild);
-                _game.HandleUpgradeBallSkill(BallSkillId.Split);
-                _game.HandleUpgradeBallSkill(BallSkillId.Bounce);
-                _game.HandleUpgradeBallSkill(BallSkillId.Magnet);
-                _game.HandleUpgradeHoleSkill("hole_01");
-                _game.HandleUpgradeHoleSkill("hole_03");
-                _game.HandleUpgradeHoleSkill("hole_05");
-                _game.HandleUpgradeHoleSkill("hole_07");
-                _game.Hud.HideToast();
-                yield return new WaitForSeconds(0.2f);
-
-                _game.Hud.DebugShowShopTab(1);
-                yield return new WaitForSeconds(0.2f);
-                yield return Capture("shop_enchant_skills");
-                _game.Hud.DebugShowShopTab(2);
-                yield return new WaitForSeconds(0.2f);
-                yield return Capture("shop_hole_skills");
-                _game.Hud.DebugShowShopTab(0);
-                yield return new WaitForSeconds(0.2f);
-                yield return Capture("shop_split_preview");
-            }
-
-            yield return new WaitForEndOfFrame();
-            Debug.Log($"[Diagnostics] final state={_game.State}, total={_game.Score.TotalScore}, credits={_game.Score.Credits}, bestVolley={_game.Score.BestVolleyScore}, bestSingle={_game.Score.BestSingleScore}, shots={_game.RoundsPlayed}, volley={_game.VolleyTotalBalls}, hits={_game.VolleyHits}, resolved={_game.VolleyResolved}, milestone={_game.NextMilestone}");
-            yield return new WaitForSeconds(0.4f);
-            Application.Quit();
         }
 
         private IEnumerator Capture(string name)

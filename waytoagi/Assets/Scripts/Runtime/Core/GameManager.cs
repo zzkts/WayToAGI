@@ -1,6 +1,5 @@
 using System.Collections;
 using System.Collections.Generic;
-using System.Text;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -9,26 +8,18 @@ namespace Pachinko
     public enum GameState
     {
         Menu,
-        Shop,
-        StageTransition,
+        Exchange,
         Aim,
         BallFlight,
         Resolving,
-        Result,
-        Milestone
-    }
-
-    public enum StageTransitionKind
-    {
-        None,
-        ToLaunch,
-        ToShop
+        Victory
     }
 
     /// <summary>
-    /// 冲分循环：
-    /// 商店阶段（购买/升级）→ 阶段过场 → 发射阶段（弹簧连续回弹，整槽弹珠快速出膛）
-    /// → 得分与连锁结算 → 里程碑或下一轮商店。
+    /// V3 动态循环：
+    /// 发射（一次拉杆齐射）→ 倾斜控球 → 落洞结算 → 本循环齐射次数用完后判定阈值
+    /// → 自动进入兑换 → 下一循环 / 重试当前循环。
+    /// 标准弹珠无限供应，不再有商店补给与奖励洞升级。
     /// </summary>
     public class GameManager : MonoBehaviour
     {
@@ -39,98 +30,52 @@ namespace Pachinko
         public TiltController Tilt { get; private set; }
         public ScoreManager Score { get; private set; }
         public ShopManager Shop { get; private set; }
+        public LoopManager Loop { get; private set; }
         public HUDController Hud { get; private set; }
         public Camera Camera { get; private set; }
         public GameState State { get; private set; } = GameState.Menu;
+
         public int CurrentShotScore { get; private set; }
         public int RoundsPlayed { get; private set; }
-        public int CurrentPhaseShots { get; private set; }
-        public int CurrentPhaseScore { get; private set; }
-        public int PhaseMagazineTotal { get; private set; }
         public int VolleyTotalBalls { get; private set; }
         public int VolleyResolved { get; private set; }
         public int VolleyHits { get; private set; }
-        public int MagazineRemaining => _magazine.Count;
-        public IReadOnlyList<BallDef> Magazine => _magazine;
-        public StageTransitionKind PendingStage => _nextStage;
+        public int LoopScore => Loop != null ? Loop.AttemptScore : 0;
+        public int LoopIndex => Loop != null ? Loop.LoopIndex : 1;
+        public int LoopThreshold => Loop != null ? Loop.Threshold : 0;
+        public int LoopVolleys => Loop != null ? Loop.VolleysThisAttempt : 0;
+        public int LoopVolleysDone => Loop != null ? Loop.VolleysCompleted : 0;
+        public int LoopVolleysRemaining => Loop != null ? Loop.VolleysRemaining : 0;
+        public int CurrentVolleyNumber => Mathf.Clamp(LoopVolleysDone + 1, 1, Mathf.Max(1, LoopVolleys));
+        public int GoalScore => Loop != null ? Loop.GoalScore : 1000000;
+        public int GoalRemaining => Loop != null ? Loop.GoalRemaining : 0;
+        public float GoalProgress => Loop != null ? Loop.GoalProgress : 0f;
+        public bool GoalReached => SaveData != null && SaveData.goalReached;
         public int BestVolleyScore => SaveData != null ? SaveData.bestVolleyScore : 0;
-        public int NextMilestone
+        public int BestLoopScore => SaveData != null ? SaveData.bestLoopScore : 0;
+        public int BallMultiplier => Shop != null ? Shop.BallMultiplier : 1;
+        public EnchantDef ActiveEnchant => Shop != null ? Shop.ActiveEnchant : null;
+        public BallDef StandardBall => Config != null ? Config.GetStandardBall() : null;
+
+        public Color CurrentBallColor
         {
             get
             {
-                if (SaveData == null) return 0;
-                foreach (int milestone in ScoreRules.Milestones)
-                {
-                    if (SaveData.totalScore < milestone) return milestone;
-                }
-                return 0;
+                var enchant = ActiveEnchant;
+                return enchant != null ? Theme.Hex(enchant.color) : Theme.BallColor(StandardBall);
             }
         }
-        public int PreviousMilestone
-        {
-            get
-            {
-                if (SaveData == null) return 0;
-                int previous = 0;
-                foreach (int milestone in ScoreRules.Milestones)
-                {
-                    if (SaveData.totalScore >= milestone) previous = milestone;
-                }
-                return previous;
-            }
-        }
-        public int LastMilestoneValue { get; private set; }
-        public bool AllMilestonesReached => SaveData != null && SaveData.totalScore >= ScoreRules.MilestoneAt(ScoreRules.MilestoneCount - 1);
-        public int MissShields => _missShields;
-        public int PendingSplitBonus => _pendingSplitBonus;
 
         public bool IsLaunchPhase =>
-            State == GameState.Aim || State == GameState.BallFlight ||
-            State == GameState.Resolving || State == GameState.Result ||
-            State == GameState.Milestone;
-
-        /// <summary>弹仓组成文本，例如“强化弹珠 ×3 · 标准弹珠 ×3”。</summary>
-        public string MagazineSummary
-        {
-            get
-            {
-                var counts = MagazineBuilder.CountByBall(_magazine);
-                var sb = new StringBuilder();
-                foreach (var ball in Config.balls)
-                {
-                    if (ball == null) continue;
-                    counts.TryGetValue(ball.id, out int count);
-                    if (count <= 0) continue;
-                    if (sb.Length > 0) sb.Append(" · ");
-                    sb.Append(ball.displayName).Append(" ×").Append(count);
-                }
-                return sb.Length > 0 ? sb.ToString() : "标准弹珠 ×1";
-            }
-        }
-
-        public BallDef HighlightBall
-        {
-            get
-            {
-                BallDef best = null;
-                foreach (var ball in _magazine)
-                {
-                    if (ball == null) continue;
-                    if (best == null || ball.multiplier > best.multiplier) best = ball;
-                }
-                return best ?? (Config != null ? Config.GetBall("ball_01") : null);
-            }
-        }
+            State == GameState.Aim || State == GameState.BallFlight || State == GameState.Resolving;
 
         private readonly List<BallDef> _magazine = new List<BallDef>();
         private readonly List<MarbleController> _activeMarbles = new List<MarbleController>();
         private readonly HashSet<MarbleController> _resolvedMarbles = new HashSet<MarbleController>();
         private MarbleController[] _marbles;
-        private StageTransitionKind _nextStage = StageTransitionKind.None;
-        private bool _allHitBonusAwarded;
-        private int _missShields;
-        private int _pendingSplitBonus;
-        private int _emptyHoleHits;
+        private bool _pendingLoopAdvance;
+        private bool _pendingLoopRetry;
+        private bool _goalReachedThisVolley;
 
         public void Initialize(GameConfig config, SaveData save, BoardRefs board, MarbleController[] marbles,
             SpringLauncher launcher, TiltController tilt, ScoreManager score, ShopManager shop, Camera camera)
@@ -144,12 +89,13 @@ namespace Pachinko
             Score = score;
             Shop = shop;
             Camera = camera;
+            Loop = new LoopManager(config, save);
 
             State = GameState.Menu;
             CurrentShotScore = 0;
-            CurrentPhaseShots = 0;
-            CurrentPhaseScore = 0;
-            PhaseMagazineTotal = 0;
+            VolleyTotalBalls = 0;
+            VolleyResolved = 0;
+            VolleyHits = 0;
             _magazine.Clear();
             _activeMarbles.Clear();
             _resolvedMarbles.Clear();
@@ -172,7 +118,7 @@ namespace Pachinko
             foreach (var hole in Board.Holes) hole.Hit += OnHoleHit;
             Shop.Changed += OnShopChanged;
 
-            RefreshUpgradeEffects();
+            ApplyBaffleCount();
             RefreshHoleViews();
             Hud = HUDController.Create(this, config, camera, board, tilt, launcher);
             Hud.ShowMenu();
@@ -181,133 +127,54 @@ namespace Pachinko
         public void StartGame()
         {
             if (State != GameState.Menu) return;
-            State = GameState.Shop;
-            Shop.BeginShopVisit();
-            _magazine.Clear();
-            _activeMarbles.Clear();
-            _resolvedMarbles.Clear();
-            PhaseMagazineTotal = 0;
-            VolleyTotalBalls = 0;
-            VolleyResolved = 0;
-            VolleyHits = 0;
-            _emptyHoleHits = 0;
-            _allHitBonusAwarded = false;
-            LastMilestoneValue = 0;
-            Hud.ShowShop(true);
-            Hud.RefreshAll();
+            Hud.HideAllModals();
+            BeginLoopAttempt();
         }
 
-        public void CloseShop()
+        /// <summary>开始一次循环尝试：重试失败循环时 loopIndex 不变。</summary>
+        private void BeginLoopAttempt()
         {
-            if (State != GameState.Shop) return;
-            Shop.EndShopVisit();
+            Loop.BeginAttempt();
+            Score.ResetCombo();
+            _goalReachedThisVolley = false;
+            _pendingLoopAdvance = false;
+            _pendingLoopRetry = false;
+            Debug.Log($"[Loop] 第 {Loop.LoopIndex} 循环开始：{Loop.VolleysThisAttempt} 次齐射，目标 {Loop.Threshold:N0}");
+            BeginVolley();
+        }
 
+        /// <summary>准备一次齐射：无限标准弹珠按固定数量装填，外观跟随当前附魔。</summary>
+        private void BeginVolley()
+        {
             _magazine.Clear();
-            _magazine.AddRange(MagazineBuilder.Build(Config, SaveData));
-            if (_magazine.Count == 0)
-            {
-                var standard = Config.GetBall("ball_01");
-                if (standard != null) _magazine.Add(standard);
-            }
-
-            // 5 号洞「裂变回响」：上一轮命中后，下一轮额外生成分裂弹。
-            if (_pendingSplitBonus > 0)
-            {
-                var splitStandard = Config.GetBall("ball_01");
-                if (splitStandard != null)
-                {
-                    int add = Mathf.Min(_pendingSplitBonus, _marbles.Length - _magazine.Count);
-                    for (int i = 0; i < add; i++) _magazine.Add(splitStandard);
-                    Debug.Log($"[Split] 裂变回响追加 {add} 颗分裂弹，下一轮弹仓 {_magazine.Count} 颗");
-                }
-                _pendingSplitBonus = 0;
-            }
-
+            _magazine.AddRange(MagazineBuilder.Build(Config));
+            if (_magazine.Count == 0 && StandardBall != null) _magazine.Add(StandardBall);
             if (_magazine.Count > _marbles.Length)
             {
-                Debug.LogWarning($"[Volley] 弹仓 {_magazine.Count} 颗超过对象池 {_marbles.Length}，只取前 {_marbles.Length} 颗。");
+                Debug.LogWarning($"[Volley] 齐射 {_magazine.Count} 颗超过对象池 {_marbles.Length}，只取前 {_marbles.Length} 颗。");
                 _magazine.RemoveRange(_marbles.Length, _magazine.Count - _marbles.Length);
-            }
-
-            PhaseMagazineTotal = _magazine.Count;
-            CurrentPhaseShots = 0;
-            CurrentPhaseScore = 0;
-            CurrentShotScore = 0;
-            VolleyTotalBalls = _magazine.Count;
-            VolleyResolved = 0;
-            VolleyHits = 0;
-            _emptyHoleHits = 0;
-            Score.ResetCombo();
-
-            State = GameState.StageTransition;
-            _nextStage = StageTransitionKind.ToLaunch;
-            Debug.Log($"[Phase] 商店 → 发射 | 齐射装填 {_magazine.Count} 颗：{MagazineSummary}");
-            Hud.HideShop();
-            Hud.ShowStageTransition(
-                "SHOP PHASE COMPLETE",
-                "发射阶段",
-                $"下一里程碑 {MilestoneLabel()}\n已装填 {_magazine.Count} 颗：{MagazineSummary}\n一次拉杆，弹簧连续回弹，全部弹珠快速出膛。",
-                "开始齐射",
-                Theme.Teal,
-                true);
-            Hud.RefreshAll();
-        }
-
-        public void ContinueStageTransition()
-        {
-            if (State != GameState.StageTransition) return;
-            var kind = _nextStage;
-            _nextStage = StageTransitionKind.None;
-            Hud.HideStageTransition();
-
-            if (kind == StageTransitionKind.ToLaunch)
-            {
-                StartVolleyAim();
-            }
-            else if (kind == StageTransitionKind.ToShop)
-            {
-                State = GameState.Shop;
-                Shop.BeginShopVisit();
-                Hud.ShowShop(false);
-                Hud.RefreshAll();
-            }
-        }
-
-        private void StartVolleyAim()
-        {
-            if (_magazine.Count == 0)
-            {
-                BeginShopStage();
-                return;
             }
 
             State = GameState.Aim;
             Tilt.SetControl(false, true);
             CurrentShotScore = 0;
-            CurrentPhaseScore = 0;
+            _goalReachedThisVolley = false;
             VolleyTotalBalls = _magazine.Count;
             VolleyResolved = 0;
             VolleyHits = 0;
-            _emptyHoleHits = 0;
-            _allHitBonusAwarded = false;
-            _missShields = UpgradeCatalog.ShieldCount(SaveData.GetHoleSkillLevel("hole_03"));
-            Score.ResetCombo();
             _activeMarbles.Clear();
             _resolvedMarbles.Clear();
 
-            float bounceMultiplier = UpgradeCatalog.BounceMultiplier(SaveData.bounceLevel);
-            float magnetAcceleration = UpgradeCatalog.MagnetAcceleration(SaveData.magnetLevel);
-            float magnetTargetX = HighestValueHoleX();
-
+            var enchant = ActiveEnchant;
             for (int i = 0; i < _marbles.Length; i++)
             {
                 var marble = _marbles[i];
                 if (marble == null) continue;
                 if (i < _magazine.Count)
                 {
-                    marble.SetBall(_magazine[i]);
+                    marble.SetAppearance(StandardBall, enchant);
+                    marble.SetExplosion(Config.explosion, SaveData.explosionUnlocked);
                     marble.PrepareAt(BoardGeometry.VolleyRackPosition(i, _magazine.Count));
-                    marble.ConfigureFlightSkills(bounceMultiplier, magnetAcceleration, magnetTargetX);
                     _activeMarbles.Add(marble);
                 }
                 else
@@ -316,7 +183,6 @@ namespace Pachinko
                 }
             }
 
-            // 弹珠对象刚被激活时再确认一次相互忽略碰撞，确保齐射不会互相卡住。
             for (int i = 0; i < _marbles.Length; i++)
             {
                 if (_marbles[i] == null) continue;
@@ -331,35 +197,22 @@ namespace Pachinko
             foreach (var hole in Board.Holes)
             {
                 hole.Arm();
-                hole.SetPoints(Shop.HolePoints(hole.Def));
+                hole.SetPoints(hole.Def.basePoints);
             }
             Hud.HideAllModals();
             Hud.RefreshAll();
-            Debug.Log($"[Volley] ready with {_activeMarbles.Count} balls");
+            Debug.Log($"[Volley] 第 {Loop.LoopIndex} 循环 · 第 {CurrentVolleyNumber}/{Loop.VolleysThisAttempt} 次齐射，装填 {_activeMarbles.Count} 颗，附魔倍率 ×{BallMultiplier}");
         }
 
         private void OnLaunchRequested(float chargeRatio)
         {
             if (State != GameState.Aim || _activeMarbles.Count == 0) return;
 
-            // 一次拉杆消耗本轮全部付费弹珠，并把整槽弹珠同时/连续弹出。
-            var counts = MagazineBuilder.CountByBall(_magazine);
-            foreach (var ball in Config.balls)
-            {
-                if (ball == null || ball.alwaysAvailable) continue;
-                if (counts.TryGetValue(ball.id, out int count) && count > 0)
-                {
-                    SaveData.ConsumeStock(ball.id, count);
-                }
-            }
-            SaveSystem.Save(SaveData);
-
             State = GameState.BallFlight;
             RoundsPlayed++;
-            CurrentPhaseShots = _activeMarbles.Count;
             VolleyResolved = 0;
             VolleyHits = 0;
-            _emptyHoleHits = 0;
+            CurrentShotScore = 0;
             Tilt.SetControl(true);
 
             int n = _activeMarbles.Count;
@@ -367,14 +220,11 @@ namespace Pachinko
             Launcher.Fire(chargeRatio, pulses);
             StartCoroutine(LaunchVolleyBurst(chargeRatio, n));
             Hud.RefreshAll();
-            StartCoroutine(MeasureVolley());
+            StartCoroutine(VolleyMeasure());
             StartCoroutine(VolleyTimeout());
         }
 
-        /// <summary>
-        /// 一次拉杆的弹簧连弹：出口常开、不做闸门，弹簧连续回弹，把整槽弹珠快速弹出。
-        /// 每颗球仍独立落洞与结算。
-        /// </summary>
+        /// <summary>一次拉杆的弹簧连弹：出口常开，弹簧连续回弹，把整槽弹珠快速弹出。</summary>
         private IEnumerator LaunchVolleyBurst(float chargeRatio, int total)
         {
             float baseSpeed = Mathf.Lerp(Config.launch.minBallSpeed, Config.launch.maxBallSpeed, Mathf.Clamp01(chargeRatio));
@@ -411,20 +261,23 @@ namespace Pachinko
             if (State != GameState.BallFlight) yield break;
             Debug.LogWarning("[Volley] timeout: resolving all remaining balls as lost");
             var snapshot = new List<MarbleController>(_activeMarbles);
+            bool missed = false;
             foreach (var marble in snapshot)
             {
                 if (marble == null || _resolvedMarbles.Contains(marble)) continue;
                 Debug.Log($"[Volley] unresolved {marble.name} pos={marble.transform.position} vel={marble.Body.linearVelocity}");
                 _resolvedMarbles.Add(marble);
                 VolleyResolved++;
+                missed = true;
                 marble.HideImmediate();
             }
+            if (missed) Score.RegisterMiss();
             Hud.ShowToast("齐射超时，未落洞的弹珠已收回");
             Hud.RefreshAll();
             StartCoroutine(FinishVolley());
         }
 
-        private IEnumerator MeasureVolley()
+        private IEnumerator VolleyMeasure()
         {
             yield return new WaitForSeconds(0.35f);
             int active = 0;
@@ -450,48 +303,32 @@ namespace Pachinko
             VolleyResolved++;
             VolleyHits++;
 
-            int points = Shop.HolePoints(hole.Def);
-            var result = Score.Score(marble.Def, hole.Def, points);
+            int points = hole.Def.basePoints;
+            var result = Score.Score(StandardBall, hole.Def, BallMultiplier, points);
             CurrentShotScore += result.total;
-            CurrentPhaseScore += result.total;
+            Loop.AddScore(result.total);
             SaveSystem.Save(SaveData);
-            Debug.Log($"[Hole] {hole.Def.id} ball={result.ballMultiplier} hole={result.holeMultiplier} points={result.holePoints} combo={result.comboMultiplier} chain={result.chainMultiplier} fever={result.feverMultiplier} jackpot={result.jackpotBonus} ember={result.emberBonus} bounty={result.bountyCredits} total={result.total} resolved={VolleyResolved}/{VolleyTotalBalls}");
+            Debug.Log($"[Hole] {hole.Def.id} ball=×{result.ballMultiplier} hole=×{result.holeMultiplier} points={result.holePoints} combo=×{result.comboMultiplier} total={result.total} loop={Loop.AttemptScore:N0} resolved={VolleyResolved}/{VolleyTotalBalls}");
 
-            // 5 号洞「裂变回响」：为下一轮积累分裂弹。
-            if (UpgradeCatalog.HoleSkillFor(hole.Def.id) == HoleSkillId.SplitEcho)
-            {
-                int add = UpgradeCatalog.SplitEchoCount(SaveData.GetHoleSkillLevel(hole.Def.id));
-                if (add > _pendingSplitBonus)
-                {
-                    _pendingSplitBonus = add;
-                    Hud.ShowToast($"裂变回响：下一轮 +{add} 颗分裂弹");
-                }
-            }
-
+            EvaluateGoal();
             marble.CaptureInto(new Vector2(hole.Def.positionX, BoardGeometry.HoleCenterY));
             Hud.PlayScorePopup(result, new Vector3(hole.Def.positionX, BoardGeometry.HoleCenterY + 0.9f, 0f));
             Hud.RefreshAll();
 
-            if (VolleyResolved >= VolleyTotalBalls)
-            {
-                AwardAllHitBonusIfPerfect();
-                StartCoroutine(FinishVolley());
-            }
+            if (VolleyResolved >= VolleyTotalBalls) StartCoroutine(FinishVolley());
         }
 
-        /// <summary>空穴：接住弹珠但不结算积分，并中断同洞连击与全局连锁。</summary>
+        /// <summary>空穴：接住弹珠但不结算积分，并中断同洞连击。</summary>
         private void ResolveEmptyHole(RewardHole hole, MarbleController marble)
         {
             _resolvedMarbles.Add(marble);
             VolleyResolved++;
             VolleyHits++;
-            _emptyHoleHits++;
-
             Score.RegisterMiss();
             marble.CaptureInto(new Vector2(hole.Def.positionX, BoardGeometry.HoleCenterY));
             Hud.PlayNoRewardPopup(hole.Def, new Vector3(hole.Def.positionX, BoardGeometry.HoleCenterY + 0.9f, 0f));
             Hud.RefreshAll();
-            Debug.Log($"[Hole] {hole.Def.id} 空穴，无奖励，连锁中断 resolved={VolleyResolved}/{VolleyTotalBalls}");
+            Debug.Log($"[Hole] {hole.Def.id} 空穴，无奖励，连击中断 resolved={VolleyResolved}/{VolleyTotalBalls}");
 
             if (VolleyResolved >= VolleyTotalBalls) StartCoroutine(FinishVolley());
         }
@@ -503,39 +340,23 @@ namespace Pachinko
 
             _resolvedMarbles.Add(marble);
             VolleyResolved++;
-            if (_missShields > 0)
-            {
-                _missShields--;
-                Hud.ShowToast("稳态护盾：抵挡一次断链");
-                Debug.Log($"[Shield] 护盾抵挡漏球，剩余护盾 {_missShields}");
-            }
-            else
-            {
-                Score.RegisterMiss();
-            }
+            Score.RegisterMiss();
             marble.HideImmediate();
             Hud.RefreshAll();
-            Debug.Log($"[Volley] ball lost, chain preserved={_missShields > 0}, resolved={VolleyResolved}/{VolleyTotalBalls}");
+            Debug.Log($"[Volley] ball lost, combo reset, resolved={VolleyResolved}/{VolleyTotalBalls}");
 
             if (VolleyResolved >= VolleyTotalBalls) StartCoroutine(FinishVolley());
         }
 
-        private void AwardAllHitBonusIfPerfect()
+        /// <summary>首次达到 100 万累计积分时记录通关标记；循环结束/齐射结束后再弹通关面板。</summary>
+        private void EvaluateGoal()
         {
-            if (_allHitBonusAwarded) return;
-            _allHitBonusAwarded = true;
-            if (VolleyTotalBalls <= 0 || VolleyHits < VolleyTotalBalls || _emptyHoleHits > 0) return;
-
-            int bonus = ScoreRules.AllHitBonusFor(CurrentPhaseScore);
-            if (bonus <= 0) return;
-
-            Score.AwardBonus(bonus);
-            CurrentShotScore += bonus;
-            CurrentPhaseScore += bonus;
+            if (SaveData.goalReached) return;
+            if (SaveData.totalScore < Loop.GoalScore) return;
+            SaveData.goalReached = true;
+            _goalReachedThisVolley = true;
             SaveSystem.Save(SaveData);
-            Hud.ShowBonusBanner("全中奖励", bonus, Theme.AmberBright);
-            Debug.Log($"[Bonus] 全中 {VolleyHits}/{VolleyTotalBalls}，奖励 +{bonus:N0}，本轮累计 {CurrentPhaseScore:N0}");
-            Hud.RefreshAll();
+            Debug.Log($"[Goal] 累计积分达到 {SaveData.totalScore:N0}，通关目标达成，进入无尽模式");
         }
 
         private IEnumerator FinishVolley()
@@ -545,132 +366,136 @@ namespace Pachinko
             Tilt.SetControl(false, true);
             yield return new WaitForSeconds(0.9f);
 
-            Score.RecordVolleyScore(CurrentPhaseScore);
-            int reached = AdvanceMilestones();
+            Score.RecordVolleyScore(CurrentShotScore);
+            Loop.RegisterVolley();
+            EvaluateGoal();
             SaveSystem.Save(SaveData);
 
-            if (reached > 0)
+            if (_goalReachedThisVolley)
             {
-                LastMilestoneValue = reached;
-                State = GameState.Milestone;
-                Debug.Log($"[Milestone] 累计得分 {SaveData.totalScore:N0}，突破 {reached:N0}；下一目标 {MilestoneLabel()}");
-                Hud.ShowMilestone();
+                _goalReachedThisVolley = false;
+                // 通关可能恰好发生在循环最后一次齐射：先把本循环成绩计入最高纪录，
+                // 再显示通关面板，避免跳过 EndLoopAttempt 后丢失最高循环统计。
+                if (Loop.AttemptComplete) Score.RecordLoopScore(Loop.AttemptScore);
+                State = GameState.Victory;
+                Hud.HideAllModals();
+                Hud.ShowVictory();
                 Hud.RefreshAll();
                 yield break;
             }
 
-            BeginShopStage();
-        }
-
-        private int AdvanceMilestones()
-        {
-            int reached = 0;
-            while (SaveData.milestoneIndex < ScoreRules.MilestoneCount &&
-                   SaveData.totalScore >= ScoreRules.Milestones[SaveData.milestoneIndex])
+            if (Loop.AttemptComplete)
             {
-                reached = ScoreRules.Milestones[SaveData.milestoneIndex];
-                SaveData.milestoneIndex++;
+                EndLoopAttempt();
             }
-            return reached;
+            else
+            {
+                BeginVolley();
+            }
         }
 
-        private string MilestoneLabel()
+        /// <summary>本循环的齐射次数用完：判定阈值，并自动打开兑换面板。</summary>
+        private void EndLoopAttempt()
         {
-            return NextMilestone > 0 ? $"{NextMilestone:N0}" : "传奇冲分";
-        }
+            Score.RecordLoopScore(Loop.AttemptScore);
+            bool passed = Loop.MeetsThreshold;
+            _pendingLoopAdvance = passed;
+            _pendingLoopRetry = !passed;
+            SaveSystem.Save(SaveData);
 
-        private void BeginShopStage()
-        {
-            Debug.Log($"[Phase] 发射 → 商店 | 齐射 {VolleyTotalBalls} 颗，命中 {VolleyHits} 颗，本轮得分 {CurrentPhaseScore}，累计 {SaveData.totalScore}");
-            Score.ResetCombo();
-            State = GameState.StageTransition;
-            _nextStage = StageTransitionKind.ToShop;
-            Tilt.SetControl(false, true);
+            Debug.Log(passed
+                ? $"[Loop] 第 {Loop.LoopIndex} 循环达标：{Loop.AttemptScore:N0} / {Loop.Threshold:N0}，进入兑换"
+                : $"[Loop] 第 {Loop.LoopIndex} 循环未达标：{Loop.AttemptScore:N0} / {Loop.Threshold:N0}，可重试");
+
+            State = GameState.Exchange;
             Hud.HideAllModals();
-            Hud.ShowStageTransition(
-                "ROUND COMPLETE",
-                "商店阶段",
-                $"本轮 {VolleyTotalBalls} 颗命中 {VolleyHits} 颗，获得 {CurrentPhaseScore:N0} 分。\n最高单轮 {BestVolleyScore:N0} · 下一里程碑 {MilestoneLabel()}\n完成补给后，全部弹珠进入下一轮待发射槽。",
-                "进入商店",
-                Theme.Amber,
-                false);
+            Hud.ShowExchange(true, passed);
             Hud.RefreshAll();
         }
 
-        public void ContinueFromMilestone()
+        /// <summary>兑换面板关闭：达标则推进到下一循环，未达标则用同一循环号重试。</summary>
+        public void CloseExchange()
         {
-            if (State != GameState.Milestone) return;
-            Hud.HideMilestone();
-            BeginShopStage();
+            if (State != GameState.Exchange) return;
+            Hud.HideExchange();
+
+            if (_pendingLoopRetry)
+            {
+                _pendingLoopRetry = false;
+                _pendingLoopAdvance = false;
+                BeginLoopAttempt();
+                return;
+            }
+
+            if (_pendingLoopAdvance)
+            {
+                _pendingLoopAdvance = false;
+                Loop.AdvanceLoop();
+                SaveSystem.Save(SaveData);
+            }
+            BeginLoopAttempt();
         }
 
-        public void ContinueFromResult()
+        public void HandleUnlockEnchant()
         {
-            if (State != GameState.Result) return;
-            BeginShopStage();
-        }
-
-        public void HandleUnlockBall(string ballId)
-        {
-            if (State != GameState.Shop) return;
-            var result = Shop.TryUnlockBall(ballId);
+            if (State != GameState.Exchange) return;
+            var result = Shop.TryUnlockNextEnchant();
             Hud.ShowToast(result.message);
             Hud.RefreshAll();
         }
 
-        public void HandleBuyBall(string ballId)
+        public void HandleUnlockExplosion()
         {
-            if (State != GameState.Shop) return;
-            var result = Shop.TryBuyBall(ballId);
+            if (State != GameState.Exchange) return;
+            var result = Shop.TryUnlockExplosion();
             Hud.ShowToast(result.message);
             Hud.RefreshAll();
         }
 
-        public void HandleUpgradeHole(string holeId)
+        public void HandleReduceBaffle()
         {
-            if (State != GameState.Shop) return;
-            var hole = Config.GetHole(holeId);
-            var result = Shop.TryUpgradeHole(hole);
-            Hud.ShowToast(result.message);
-            RefreshHoleViews();
-            Hud.RefreshAll();
-        }
-
-        public void HandleUpgradeEnchant(EnchantId id)
-        {
-            if (State != GameState.Shop) return;
-            var result = Shop.TryUpgradeEnchant(id);
+            if (State != GameState.Exchange) return;
+            var result = Shop.TryReduceBaffle();
             Hud.ShowToast(result.message);
             Hud.RefreshAll();
         }
 
-        public void HandleUpgradeBallSkill(BallSkillId id)
+        public void ContinueFromVictory()
         {
-            if (State != GameState.Shop) return;
-            var result = Shop.TryUpgradeBallSkill(id);
-            Hud.ShowToast(result.message);
-            Hud.RefreshAll();
-        }
+            if (State != GameState.Victory) return;
+            Hud.HideVictory();
 
-        public void HandleUpgradeHoleSkill(string holeId)
-        {
-            if (State != GameState.Shop) return;
-            var result = Shop.TryUpgradeHoleSkill(holeId);
-            Hud.ShowToast(result.message);
-            Hud.RefreshAll();
+            if (Loop.AttemptComplete)
+            {
+                // 通关后本循环视为达标，兑换结束后进入下一循环；无尽模式继续累计。
+                _pendingLoopAdvance = true;
+                _pendingLoopRetry = false;
+                State = GameState.Exchange;
+                Hud.HideAllModals();
+                Hud.ShowExchange(true, true);
+                Hud.RefreshAll();
+            }
+            else
+            {
+                BeginVolley();
+            }
         }
 
         private void OnShopChanged()
         {
-            RefreshUpgradeEffects();
+            ApplyBaffleCount();
             RefreshHoleViews();
+            SaveSystem.Save(SaveData);
+            Hud.RefreshAll();
         }
 
-        private void RefreshUpgradeEffects()
+        private void ApplyBaffleCount()
         {
-            if (Tilt != null)
+            if (Board == null || Board.Baffles == null) return;
+            int active = Mathf.Clamp(SaveData.baffleCount, 0, Board.Baffles.Count);
+            for (int i = 0; i < Board.Baffles.Count; i++)
             {
-                Tilt.ControlMultiplier = UpgradeCatalog.FrostAuthorityMultiplier(SaveData.frostLevel);
+                if (Board.Baffles[i] != null) Board.Baffles[i].gameObject.SetActive(i < active);
             }
         }
 
@@ -680,22 +505,8 @@ namespace Pachinko
             foreach (var hole in Board.Holes)
             {
                 if (hole == null || hole.Def == null) continue;
-                hole.SetPoints(Shop.HolePoints(hole.Def));
+                hole.SetPoints(hole.Def.basePoints);
             }
-        }
-
-        private float HighestValueHoleX()
-        {
-            HoleDef best = null;
-            if (Config != null && Config.holes != null)
-            {
-                foreach (var hole in Config.holes)
-                {
-                    if (hole == null) continue;
-                    if (best == null || hole.multiplier > best.multiplier) best = hole;
-                }
-            }
-            return best != null ? best.positionX : 0f;
         }
 
         public void ResetSave()
@@ -713,17 +524,13 @@ namespace Pachinko
 
         public void DebugAutoStartAim()
         {
-            if (State == GameState.Menu)
-            {
-                StartGame();
-                CloseShop();
-                ContinueStageTransition();
-            }
+            if (State == GameState.Menu) StartGame();
         }
 
+        /// <summary>兼容自动化脚本：结束当前兑换并开始下一循环。</summary>
         public void DebugContinueStage()
         {
-            ContinueStageTransition();
+            if (State == GameState.Exchange) CloseExchange();
         }
 
         public void DebugGrantCredits(int amount)
@@ -752,16 +559,18 @@ namespace Pachinko
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
             if (Input.GetKeyDown(KeyCode.F1))
             {
-                SaveData.credits += 500;
+                SaveData.credits += 10000;
                 SaveSystem.Save(SaveData);
-                Hud.ShowToast("调试：+500 可用积分");
+                Hud.ShowToast("调试：+10,000 可用积分");
                 Hud.RefreshAll();
             }
             if (Input.GetKeyDown(KeyCode.F2))
             {
-                SaveData.totalScore += 5000;
+                SaveData.totalScore += 100000;
+                SaveData.credits += 100000;
+                EvaluateGoal();
                 SaveSystem.Save(SaveData);
-                Hud.ShowToast("调试：+5000 累计得分");
+                Hud.ShowToast("调试：+100,000 累计得分与可用积分");
                 Hud.RefreshAll();
             }
 #endif

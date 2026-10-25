@@ -44,12 +44,64 @@ namespace Pachinko
         public bool invert = false;
     }
 
+    /// <summary>
+    /// V3 取消弹珠购买与库存：标准弹珠无限供应，每次齐射固定装填若干颗。
+    /// 可用积分与累计得分同步累加（1:1），只有兑换会减少可用积分。
+    /// </summary>
     [Serializable]
     public class EconomySettings
     {
         public int startingCredits = 0;
-        public int maxBallsPerShopVisit = 10;
-        public int freeStandardBallsPerPhase = 3;
+        public int marblesPerVolley = 3;
+        public int startingBaffleCount = 1;
+        public int enchantBasePrice = 10000;
+        public float enchantPriceGrowth = 1.6f;
+    }
+
+    /// <summary>动态循环：每次循环的齐射次数随机，并随循环数缓慢增加。</summary>
+    [Serializable]
+    public class LoopSettings
+    {
+        public int minVolleys = 2;
+        public int maxVolleys = 3;
+        public int maxVolleysCap = 6;
+        public int growthEveryLoops = 4;
+        public int earlyThreshold = 5000;
+        public int earlyUntilLoop = 3;
+        public int midThreshold = 20000;
+        public int midUntilLoop = 10;
+        public float lateThresholdGrowth = 1.3f;
+        public int goalScore = 1000000;
+    }
+
+    [Serializable]
+    public class ExplosionSettings
+    {
+        public int unlockPrice = 50000;
+        public int triggerCollisions = 10;
+        /// <summary>世界单位；1 单位 = 100 设计像素，1.2 即 120px 半径。</summary>
+        public float radius = 1.2f;
+        public float force = 8f;
+    }
+
+    [Serializable]
+    public class BaffleSettings
+    {
+        public int maxCount = 3;
+        public int reduceCost = 20000;
+        /// <summary>左右往返总幅度（世界单位）。1.2 = 120px，单侧位移为一半。</summary>
+        public float amplitude = 1.2f;
+        public float period = 2f;
+    }
+
+    [Serializable]
+    public class EnchantDef
+    {
+        public string id;
+        public string displayName;
+        public string description;
+        public int multiplier = 1;
+        public string color = "#FFFFFF";
     }
 
     [Serializable]
@@ -61,9 +113,6 @@ namespace Pachinko
         public int multiplier = 1;
         public string color = "#FFFFFF";
         public string outlineColor = "#333333";
-        public int unlockPrice;
-        public int unitPrice;
-        public bool alwaysAvailable;
     }
 
     [Serializable]
@@ -73,45 +122,35 @@ namespace Pachinko
         public string displayName;
         public int multiplier = 1;
         public int basePoints = 100;
-        public int upgradeBasePrice = 300;
-        public float upgradePriceGrowth = 1.6f;
-        public int upgradePointsPerLevel = 50;
-        public int maxUpgradeLevel = 3;
         public string color = "#E9A93E";
         public float positionX;
         /// <summary>
-        /// 空穴标记。空穴仍会接住弹珠，但不给分并中断连锁。
+        /// 空穴标记。空穴仍会接住弹珠，但不给分并中断连击。
         /// 使用反向布尔值，旧配置缺少该字段时默认按奖励洞处理。
         /// </summary>
         public bool noReward;
 
         public bool HasReward => !noReward;
-
-        public int PointsAtLevel(int level)
-        {
-            return basePoints + Mathf.Clamp(level, 0, maxUpgradeLevel) * upgradePointsPerLevel;
-        }
-
-        public int UpgradePriceAtLevel(int level)
-        {
-            return Mathf.RoundToInt(upgradeBasePrice * Mathf.Pow(upgradePriceGrowth, Mathf.Clamp(level, 0, maxUpgradeLevel)));
-        }
     }
 
     [Serializable]
     public class GameConfig
     {
-        public string version = "2.0";
+        public string version = "3.0";
         public PhysicsSettings physics = new PhysicsSettings();
         public LaunchSettings launch = new LaunchSettings();
         public TiltSettings tilt = new TiltSettings();
         public EconomySettings economy = new EconomySettings();
+        public LoopSettings loop = new LoopSettings();
+        public ExplosionSettings explosion = new ExplosionSettings();
+        public BaffleSettings baffle = new BaffleSettings();
         public BallDef[] balls;
+        public EnchantDef[] enchants;
         public HoleDef[] holes;
 
-        public int MaxVolleyCapacity => economy != null
-            ? economy.freeStandardBallsPerPhase + economy.maxBallsPerShopVisit
-            : 0;
+        public int VolleySize => economy != null ? Mathf.Clamp(economy.marblesPerVolley, 1, 16) : 3;
+        public int MaxBaffleCount => baffle != null ? Mathf.Clamp(baffle.maxCount, 0, 3) : 0;
+        public int MaxEnchantTier => enchants != null ? enchants.Length : 0;
 
         public BallDef GetBall(string id)
         {
@@ -121,6 +160,27 @@ namespace Pachinko
                 if (ball != null && ball.id == id) return ball;
             }
             return null;
+        }
+
+        /// <summary>标准弹珠：V3 中唯一且无限供应的白球。</summary>
+        public BallDef GetStandardBall()
+        {
+            var standard = GetBall("ball_01");
+            if (standard != null) return standard;
+            return balls != null && balls.Length > 0 ? balls[0] : null;
+        }
+
+        public EnchantDef GetEnchant(int tier)
+        {
+            if (enchants == null || tier <= 0 || tier > enchants.Length) return null;
+            return enchants[tier - 1];
+        }
+
+        /// <summary>第 tier 次附魔解锁的价格（tier 从 0 开始，对应第一档附魔）。</summary>
+        public int EnchantPrice(int tier)
+        {
+            if (economy == null) return 10000;
+            return Mathf.RoundToInt(economy.enchantBasePrice * Mathf.Pow(Mathf.Max(1f, economy.enchantPriceGrowth), Mathf.Max(0, tier)));
         }
 
         public HoleDef GetHole(string id)
@@ -133,7 +193,7 @@ namespace Pachinko
             return null;
         }
 
-        /// <summary>返回所有奖励洞，保持从左到右的布局顺序。空穴不参与商店升级。</summary>
+        /// <summary>返回所有奖励洞，保持从左到右的布局顺序。空穴不参与兑换。</summary>
         public HoleDef[] GetRewardHoles()
         {
             if (holes == null) return Array.Empty<HoleDef>();
@@ -160,9 +220,33 @@ namespace Pachinko
             tilt.maxHorizontalGravity = Mathf.Clamp(tilt.maxHorizontalGravity, 0f, 20f);
             tilt.smoothing = Mathf.Max(1f, tilt.smoothing);
             tilt.sensorSmoothing = Mathf.Max(1f, tilt.sensorSmoothing);
-            economy.maxBallsPerShopVisit = Mathf.Max(1, economy.maxBallsPerShopVisit);
-            economy.freeStandardBallsPerPhase = Mathf.Clamp(economy.freeStandardBallsPerPhase, 1, 20);
-            economy.maxBallsPerShopVisit = Mathf.Clamp(economy.maxBallsPerShopVisit, 1, 20);
+
+            economy.startingCredits = Mathf.Max(0, economy.startingCredits);
+            economy.marblesPerVolley = Mathf.Clamp(economy.marblesPerVolley, 1, 16);
+            economy.enchantBasePrice = Mathf.Max(1, economy.enchantBasePrice);
+            economy.enchantPriceGrowth = Mathf.Max(1f, economy.enchantPriceGrowth);
+
+            loop.minVolleys = Mathf.Clamp(loop.minVolleys, 1, 12);
+            loop.maxVolleys = Mathf.Clamp(loop.maxVolleys, loop.minVolleys, 12);
+            loop.maxVolleysCap = Mathf.Clamp(loop.maxVolleysCap, loop.maxVolleys, 12);
+            loop.growthEveryLoops = Mathf.Max(1, loop.growthEveryLoops);
+            loop.earlyThreshold = Mathf.Max(0, loop.earlyThreshold);
+            loop.earlyUntilLoop = Mathf.Max(0, loop.earlyUntilLoop);
+            loop.midThreshold = Mathf.Max(loop.earlyThreshold, loop.midThreshold);
+            loop.midUntilLoop = Mathf.Max(loop.earlyUntilLoop, loop.midUntilLoop);
+            loop.lateThresholdGrowth = Mathf.Max(1f, loop.lateThresholdGrowth);
+            loop.goalScore = Mathf.Max(1, loop.goalScore);
+
+            explosion.unlockPrice = Mathf.Max(1, explosion.unlockPrice);
+            explosion.triggerCollisions = Mathf.Clamp(explosion.triggerCollisions, 1, 100);
+            explosion.radius = Mathf.Clamp(explosion.radius, 0.2f, 5f);
+            explosion.force = Mathf.Clamp(explosion.force, 0.1f, 50f);
+
+            baffle.maxCount = Mathf.Clamp(baffle.maxCount, 0, 3);
+            baffle.reduceCost = Mathf.Max(1, baffle.reduceCost);
+            baffle.amplitude = Mathf.Clamp(baffle.amplitude, 0f, 5f);
+            baffle.period = Mathf.Max(0.2f, baffle.period);
+            economy.startingBaffleCount = Mathf.Clamp(economy.startingBaffleCount, 0, baffle.maxCount);
 
             if (balls == null || balls.Length == 0)
             {
@@ -172,6 +256,20 @@ namespace Pachinko
             {
                 throw new Exception("game_config.json: holes 至少需要配置一个奖励洞");
             }
+            if (GetStandardBall() == null || GetStandardBall().id != "ball_01")
+            {
+                throw new Exception("game_config.json: 缺少标准弹珠 ball_01");
+            }
+
+            if (enchants != null)
+            {
+                foreach (var enchant in enchants)
+                {
+                    if (enchant == null) throw new Exception("game_config.json: enchants 中存在空项");
+                    enchant.multiplier = Mathf.Max(1, enchant.multiplier);
+                }
+            }
+
             var seenHoleIds = new System.Collections.Generic.HashSet<string>();
             float lastX = float.NegativeInfinity;
             int rewardCount = 0;
@@ -186,33 +284,15 @@ namespace Pachinko
                     rewardCount++;
                     hole.basePoints = Mathf.Max(0, hole.basePoints);
                     hole.multiplier = Mathf.Max(0, hole.multiplier);
-                    hole.maxUpgradeLevel = Mathf.Max(0, hole.maxUpgradeLevel);
-                    hole.upgradeBasePrice = Mathf.Max(1, hole.upgradeBasePrice);
-                    hole.upgradePointsPerLevel = Mathf.Max(0, hole.upgradePointsPerLevel);
                 }
                 else
                 {
-                    // 空穴不结算积分，也不提供升级入口。
                     hole.multiplier = 0;
                     hole.basePoints = 0;
-                    hole.maxUpgradeLevel = 0;
-                    hole.upgradePointsPerLevel = 0;
                 }
             }
             if (rewardCount == 0) throw new Exception("game_config.json: 至少需要配置一个 noReward=false 的奖励洞");
-            if (GetBall("ball_01") == null)
-            {
-                throw new Exception("game_config.json: 缺少保底弹珠 ball_01");
-            }
-            if (GetBall("ball_01").alwaysAvailable == false)
-            {
-                Debug.LogWarning("game_config.json: ball_01 应为免费保底弹珠，已强制设为无限供应。");
-                GetBall("ball_01").alwaysAvailable = true;
-                GetBall("ball_01").unitPrice = 0;
-                GetBall("ball_01").unlockPrice = 0;
-            }
         }
-
     }
 
     public static class ConfigLoader

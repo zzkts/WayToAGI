@@ -15,7 +15,7 @@ namespace PachinkoEditor
         {
             _passed = 0;
             _failed = 0;
-            Debug.Log("========== 弹珠机 MVP 数值自检 ==========");
+            Debug.Log("========== 弹珠机 V3 数值自检 ==========");
 
             try
             {
@@ -26,8 +26,7 @@ namespace PachinkoEditor
                 ConfigTest(config);
                 ScoreTest(config);
                 ComboResetTest(config);
-                ScoringSystemTest(config);
-                UpgradeTest(config);
+                LoopTest(config);
                 ShopTest(config);
                 MagazineTest(config);
                 SaveRoundTripTest(config);
@@ -54,7 +53,14 @@ namespace PachinkoEditor
 
         private static void ConfigTest(GameConfig config)
         {
-            Check("配置有三个弹珠", config.balls != null && config.balls.Length == 3);
+            Check("配置版本为 3.0", config.version == "3.0");
+            Check("V3 只保留一颗无限标准弹珠", config.balls != null && config.balls.Length == 1 &&
+                config.GetStandardBall() != null && config.GetStandardBall().id == "ball_01" &&
+                config.GetStandardBall().multiplier == 1);
+            Check("每次齐射装填 3 颗", config.VolleySize == 3 && config.economy.marblesPerVolley == 3);
+            Check("初始没有可用积分", config.economy.startingCredits == 0);
+            Check("初始挡板 1 块、最多 3 块", config.economy.startingBaffleCount == 1 && config.MaxBaffleCount == 3);
+
             Check("配置有八个洞", config.holes != null && config.holes.Length == 8);
             Check("八个洞全部位于发射道隔板左侧", config.holes[7].positionX < BoardGeometry.LauncherWallX - 0.15f);
             Check("奖励洞与空穴 1:1 且交替排列",
@@ -63,177 +69,108 @@ namespace PachinkoEditor
                 config.holes[2].HasReward && !config.holes[3].HasReward &&
                 config.holes[4].HasReward && !config.holes[5].HasReward &&
                 config.holes[6].HasReward && !config.holes[7].HasReward);
-            Check("基础弹珠免费", config.GetBall("ball_01").alwaysAvailable && config.GetBall("ball_01").unitPrice == 0);
-            Check("强化弹珠倍率 ×2", config.GetBall("ball_02").multiplier == 2);
-            Check("稀有弹珠倍率 ×3", config.GetBall("ball_03").multiplier == 3);
             Check("四奖励洞倍率为 1/3/8/12",
                 config.holes[0].multiplier == 1 && config.holes[2].multiplier == 3 &&
                 config.holes[4].multiplier == 8 && config.holes[6].multiplier == 12);
             Check("四奖励洞基础积分为 50/120/260/300",
                 config.holes[0].basePoints == 50 && config.holes[2].basePoints == 120 &&
                 config.holes[4].basePoints == 260 && config.holes[6].basePoints == 300);
-            Check("空穴不产生积分且不可升级",
-                config.holes[1].multiplier == 0 && config.holes[1].basePoints == 0 && config.holes[1].maxUpgradeLevel == 0);
-            Check("默认经济配置每阶段免费装填 3 颗标准弹珠", config.economy.freeStandardBallsPerPhase == 3);
-            Check("默认经济配置单次商店最多购买 5 颗", config.economy.maxBallsPerShopVisit == 5);
+            Check("空穴不产生积分", config.holes[1].multiplier == 0 && config.holes[1].basePoints == 0);
+
+            Check("两档附魔为 ×2 / ×5", config.enchants != null && config.enchants.Length == 2 &&
+                config.GetEnchant(1).multiplier == 2 && config.GetEnchant(2).multiplier == 5);
+            Check("附魔首档价格 10000、次档 16000",
+                config.EnchantPrice(0) == 10000 && config.EnchantPrice(1) == 16000);
+
+            Check("循环阈值 1~3 为 5000", config.loop.earlyThreshold == 5000 && config.loop.earlyUntilLoop == 3);
+            Check("循环阈值 4~10 为 20000", config.loop.midThreshold == 20000 && config.loop.midUntilLoop == 10);
+            Check("通关目标为 1000000", config.loop.goalScore == 1000000);
+            Check("引爆：10 次碰撞 / 120px / 力度 8",
+                config.explosion.triggerCollisions == 10 &&
+                Mathf.Approximately(config.explosion.radius, 1.2f) &&
+                Mathf.Approximately(config.explosion.force, 8f));
+            Check("挡板：幅度 120px、周期 2 秒", Mathf.Approximately(config.baffle.amplitude, 1.2f) &&
+                Mathf.Approximately(config.baffle.period, 2f));
         }
 
         private static void ScoreTest(GameConfig config)
         {
             var data = SaveData.CreateNew(config);
             var score = new ScoreManager(data);
-            var ball = config.GetBall("ball_02");
+            var ball = config.GetStandardBall();
             var hole = config.holes[6];
 
-            var r1 = score.Score(ball, hole, hole.basePoints);
-            Check("首球基础分 2×12×300=7200，并触发头奖 +20000",
-                r1.subtotal == 7200 && r1.jackpotBonus == 20000 && r1.total == 27200);
-            Check("首球连锁 ×1、同洞 ×1、未狂热",
-                r1.chainMultiplier == 1 && r1.comboMultiplier == 1 && !r1.feverActive);
+            var r1 = score.Score(ball, hole, 1, hole.basePoints);
+            Check("首球 1×12×300=3600", r1.subtotal == 3600 && r1.total == 3600);
+            Check("首球同洞连击 ×1", r1.comboMultiplier == 1 && r1.comboCount == 1);
+            Check("累计得分与可用积分 1:1", data.totalScore == 3600 && data.credits == 3600);
+            Check("最高单次记录更新为 3600", data.bestSingleScore == 3600);
 
-            var r2 = score.Score(ball, hole, hole.basePoints);
-            Check("同洞第2次 ×2、连锁 ×2", r2.comboMultiplier == 2 && r2.chainMultiplier == 2);
-            Check("第2球头奖不重复，总分 28800", r2.jackpotBonus == 0 && r2.total == 28800);
+            var r2 = score.Score(ball, hole, 1, hole.basePoints);
+            Check("同洞第 2 次连击 ×2，总分 7200", r2.comboMultiplier == 2 && r2.total == 7200);
+            Check("累计得分累加到 10800", data.totalScore == 10800 && data.credits == 10800);
 
-            var r3 = score.Score(ball, hole, hole.basePoints);
-            Check("同洞第3次 ×4、连锁 ×3", r3.comboMultiplier == 4 && r3.chainMultiplier == 3 && r3.total == 86400);
-            var r4 = score.Score(ball, hole, hole.basePoints);
-            Check("同洞第4次 ×8、连锁 ×4", r4.comboMultiplier == 8 && r4.chainMultiplier == 4 && r4.total == 230400);
-
-            var r5 = score.Score(ball, hole, hole.basePoints);
-            Check("连续第5次命中触发狂热 ×2", r5.feverActive && r5.feverMultiplier == 2);
-            Check("狂热 + 连锁 ×5 + 同洞 ×8 = 576000", r5.total == 576000);
-
-            var r6 = score.Score(ball, hole, hole.basePoints);
-            Check("第6次连锁封顶 ×5，狂热继续", r6.chainMultiplier == 5 && r6.feverActive && r6.total == 576000);
-            Check("本轮累计得分正确", data.totalScore == 1524800);
-            Check("积分按 20% 硬编码比例结算（含 2000 初始积分）", data.credits == 306960);
-            Check("最高单次记录更新为 576000", data.bestSingleScore == 576000);
+            var switched = score.Score(ball, config.holes[0], 1, config.holes[0].basePoints);
+            Check("换洞后同洞连击从 ×1 重新开始", switched.comboMultiplier == 1 && switched.comboCount == 1);
+            Check("换洞得分按新洞计算 1×1×50=50", switched.total == 50);
         }
 
         private static void ComboResetTest(GameConfig config)
         {
             var data = SaveData.CreateNew(config);
             var score = new ScoreManager(data);
-            var ball = config.GetBall("ball_01");
-            var h7 = config.holes[6];
-            var h1 = config.holes[0];
+            var ball = config.GetStandardBall();
+            var hole = config.holes[0];
 
-            score.Score(ball, h7, h7.basePoints);
-            score.Score(ball, h7, h7.basePoints);
-            var switched = score.Score(ball, h1, h1.basePoints);
-            Check("换洞后同洞连击从 ×1 重新开始", switched.comboMultiplier == 1 && switched.comboCount == 1);
-            Check("换洞不会中断全局连锁", switched.chainMultiplier == 3);
-            Check("换洞得分按新洞计算", switched.subtotal == 50);
-
-            score.RegisterMiss();
-            var afterMiss = score.Score(ball, h1, h1.basePoints);
-            Check("漏球后连锁与同洞连击同时归零",
-                afterMiss.chainMultiplier == 1 && afterMiss.comboMultiplier == 1 && !afterMiss.feverActive);
-            Check("漏球后首球得分回到基础值", afterMiss.total == 50);
-        }
-
-        private static void ScoringSystemTest(GameConfig config)
-        {
-            Check("第一档里程碑为 250000", ScoreRules.Milestones[0] == 250000);
-            Check("共配置 7 档里程碑", ScoreRules.MilestoneCount == 7);
-            Check("积分折算为得分的 20%", ScoreRules.CreditsFor(1000) == 200);
-            Check("全中奖励为单轮得分的 50%", ScoreRules.AllHitBonusFor(100000) == 50000);
-
-            var data = SaveData.CreateNew(config);
-            var score = new ScoreManager(data);
-            var ball = config.GetBall("ball_02");
-            var hole = config.holes[6];
-
-            var first = score.Score(ball, hole, hole.basePoints);
-            Check("每轮首次命中 7 号洞触发头奖", first.jackpotBonus == 20000);
+            score.Score(ball, hole, 1, hole.basePoints);
+            score.Score(ball, hole, 1, hole.basePoints);
+            score.Score(ball, hole, 1, hole.basePoints);
+            var fourth = score.Score(ball, hole, 1, hole.basePoints);
+            var fifth = score.Score(ball, hole, 1, hole.basePoints);
+            Check("同洞连击第 4 次达到 ×8", fourth.comboMultiplier == 8);
+            Check("同洞连击封顶 ×8", fifth.comboMultiplier == 8 && fifth.comboCount == 5);
 
             score.RegisterMiss();
-            var afterMiss = score.Score(ball, hole, hole.basePoints);
-            Check("漏球不会重置本轮头奖状态", afterMiss.jackpotBonus == 0);
-
-            score.ResetCombo();
-            var nextVolley = score.Score(ball, hole, hole.basePoints);
-            Check("进入下一轮后头奖重新可用", nextVolley.jackpotBonus == 20000);
-
-            int beforeBonus = data.totalScore;
-            int creditsBefore = data.credits;
-            score.AwardBonus(1000);
-            Check("额外奖励计入累计得分", data.totalScore == beforeBonus + 1000);
-            Check("额外奖励按 20% 计入积分", data.credits == creditsBefore + 200);
-
-            Check("最高单轮记录可刷新", score.RecordVolleyScore(5000) && data.bestVolleyScore == 5000);
-            Check("较低单轮不会覆盖记录", !score.RecordVolleyScore(4000) && data.bestVolleyScore == 5000);
-
-            data.milestoneIndex = 99;
-            data.EnsureIntegrity(config);
-            Check("存档钳制非法里程碑索引", data.milestoneIndex == ScoreRules.MilestoneCount);
+            var afterMiss = score.Score(ball, hole, 1, hole.basePoints);
+            Check("漏球/空穴后连击归零", afterMiss.comboMultiplier == 1 && afterMiss.comboCount == 1);
+            Check("归零后首球得分回到基础值 50", afterMiss.total == 50);
         }
 
-        private static void UpgradeTest(GameConfig config)
+        private static void LoopTest(GameConfig config)
         {
-            Check("初始积分 2000", SaveData.CreateNew(config).credits == 2000);
-            Check("附魔/技能/洞技能价格基数正确",
-                UpgradeCatalog.EnchantCost(EnchantId.Ember, 0) == 1500 &&
-                UpgradeCatalog.BallSkillCost(BallSkillId.Split, 0) == 2000 &&
-                UpgradeCatalog.HoleSkillCost("hole_01", 0) == 1500);
-            Check("附魔上限 5 级、弹珠技能与洞技能上限 3 级",
-                UpgradeCatalog.MaxEnchantLevel == 5 &&
-                UpgradeCatalog.MaxBallSkillLevel == 3 &&
-                UpgradeCatalog.MaxHoleSkillLevel == 3);
-
             var data = SaveData.CreateNew(config);
-            data.credits = 100000;
-            var shop = new ShopManager(config, data, false);
-            shop.BeginShopVisit();
-            Check("商店附魔升级成功", shop.TryUpgradeEnchant(EnchantId.Ember).success && data.emberLevel == 1);
-            Check("商店弹珠技能升级成功", shop.TryUpgradeBallSkill(BallSkillId.Split).success && data.splitLevel == 1);
-            Check("商店奖励洞技能升级成功", shop.TryUpgradeHoleSkill("hole_03").success && data.GetHoleSkillLevel("hole_03") == 1);
+            var loop = new LoopManager(config, data, 12345);
 
-            data.splitLevel = 1;
-            var splitMagazine = MagazineBuilder.Build(config, data);
-            Check("分裂技能额外装填 1 颗标准弹", splitMagazine.Count == 4 &&
-                splitMagazine.FindAll(b => b.id == "ball_01").Count == 4);
+            Check("第 1 循环阈值为 5000", loop.ThresholdFor(1) == 5000);
+            Check("第 3 循环仍为 5000", loop.ThresholdFor(3) == 5000);
+            Check("第 4 循环提升到 20000", loop.ThresholdFor(4) == 20000);
+            Check("第 10 循环仍为 20000", loop.ThresholdFor(10) == 20000);
+            Check("第 11 循环开始按 1.3 倍递增", loop.ThresholdFor(11) == 26000);
+            Check("第 12 循环阈值为 33800", loop.ThresholdFor(12) == 33800);
+            Check("通关目标 1000000", loop.GoalScore == 1000000);
 
-            var emberData = SaveData.CreateNew(config);
-            emberData.emberLevel = 1;
-            var emberScore = new ScoreManager(emberData);
-            var b1 = config.GetBall("ball_01");
-            var h1 = config.holes[0];
-            emberScore.Score(b1, h1, h1.basePoints);
-            emberScore.Score(b1, h1, h1.basePoints);
-            var emberHit = emberScore.Score(b1, h1, h1.basePoints);
-            Check("炽焰第 3 层触发爆发 +300", emberHit.emberBonus == 300);
+            loop.BeginAttempt();
+            Check("首次循环齐射次数为 2~3 次", loop.VolleysThisAttempt >= 2 && loop.VolleysThisAttempt <= 3);
+            loop.AddScore(20000);
+            for (int i = 0; i < loop.VolleysThisAttempt; i++) loop.RegisterVolley();
+            Check("齐射全部完成", loop.AttemptComplete);
+            Check("20000 分达到首循环阈值", loop.MeetsThreshold);
 
-            var bountyData = SaveData.CreateNew(config);
-            bountyData.SetHoleSkillLevel("hole_01", 1);
-            var bountyScore = new ScoreManager(bountyData);
-            var bounty = bountyScore.Score(b1, config.holes[0], config.holes[0].basePoints);
-            Check("1 号洞赏金技能额外 +120 积分", bounty.bountyCredits == 120);
+            var failData = SaveData.CreateNew(config);
+            failData.loopIndex = 4;
+            var failLoop = new LoopManager(config, failData, 7);
+            failLoop.BeginAttempt();
+            failLoop.AddScore(19999);
+            for (int i = 0; i < failLoop.VolleysThisAttempt; i++) failLoop.RegisterVolley();
+            Check("19999 分未达到第 4 循环阈值", !failLoop.MeetsThreshold);
 
-            var gildData = SaveData.CreateNew(config);
-            gildData.gildLevel = 1;
-            int before = gildData.credits;
-            var gildScore = new ScoreManager(gildData);
-            var gildHit = gildScore.Score(b1, config.holes[0], config.holes[0].basePoints);
-            int baseCredits = Mathf.RoundToInt(ScoreRules.CreditsFor(gildHit.total) * 1.1f);
-            Check("金辉附魔使积分获取 +10%", gildData.credits - before == baseCredits);
-
-            var jackpotData = SaveData.CreateNew(config);
-            jackpotData.SetHoleSkillLevel("hole_07", 1);
-            var jackpotScore = new ScoreManager(jackpotData);
-            var jackpotHit = jackpotScore.Score(config.GetBall("ball_02"), config.holes[6], config.holes[6].basePoints);
-            Check("头奖核心使头奖 +25%", jackpotHit.jackpotBonus == 25000);
-
-            Check("洞技能只挂在四个奖励洞上",
-                UpgradeCatalog.HoleSkillFor("hole_01") == HoleSkillId.Bounty &&
-                UpgradeCatalog.HoleSkillFor("hole_03") == HoleSkillId.Aegis &&
-                UpgradeCatalog.HoleSkillFor("hole_05") == HoleSkillId.SplitEcho &&
-                UpgradeCatalog.HoleSkillFor("hole_07") == HoleSkillId.JackpotCore &&
-                UpgradeCatalog.HoleSkillFor("hole_02") == HoleSkillId.None);
-            Check("护盾与裂变技能数值", UpgradeCatalog.ShieldCount(2) == 2 && UpgradeCatalog.SplitEchoCount(2) == 2);
-            Check("弹跳与磁引数值", Mathf.Approximately(UpgradeCatalog.BounceMultiplier(2), 1.16f) &&
-                Mathf.Approximately(UpgradeCatalog.MagnetAcceleration(2), 2f));
+            var goalData = SaveData.CreateNew(config);
+            goalData.totalScore = 1000000;
+            goalData.EnsureIntegrity(config);
+            var goalLoop = new LoopManager(config, goalData, 1);
+            goalLoop.BeginAttempt();
+            Check("通关后循环永远视为达标", goalData.goalReached && goalLoop.MeetsThreshold);
+            Check("通关进度为 100%", Mathf.Approximately(goalLoop.GoalProgress, 1f));
         }
 
         private static void ShopTest(GameConfig config)
@@ -241,108 +178,80 @@ namespace PachinkoEditor
             var data = SaveData.CreateNew(config);
             data.credits = 200000;
             var shop = new ShopManager(config, data, false);
-            shop.BeginShopVisit();
 
-            var unlock = shop.TryUnlockBall("ball_02");
-            Check("解锁强化弹珠成功", unlock.success);
-            Check("解锁扣费 800", data.credits == 199200);
-            Check("强化弹珠进入已解锁列表", shop.IsUnlocked("ball_02"));
+            var first = shop.TryUnlockNextEnchant();
+            Check("解锁第一档附魔成功", first.success && shop.EnchantTier == 1 && shop.BallMultiplier == 2);
+            Check("第一档附魔扣费 10000", data.credits == 190000);
 
-            var buy = shop.TryBuyBall("ball_02", 1);
-            Check("购买强化弹珠成功", buy.success);
-            Check("购买扣费 500 且库存为 1", data.credits == 198700 && shop.StockOf("ball_02") == 1);
-            Check("商店阶段购买计数为 1", shop.ShopVisitPurchaseCount == 1);
+            var second = shop.TryUnlockNextEnchant();
+            Check("解锁第二档附魔成功", second.success && shop.EnchantTier == 2 && shop.BallMultiplier == 5);
+            Check("第二档附魔扣费 16000", data.credits == 174000);
+            Check("附魔全部解锁后无法继续", shop.IsEnchantMaxed && !shop.TryUnlockNextEnchant().success);
 
-            var hole = config.GetHole("hole_01");
-            int p0 = shop.HolePoints(hole);
-            var up1 = shop.TryUpgradeHole(hole);
-            int p1 = shop.HolePoints(hole);
-            Check("1号洞升级一次成功", up1.success && shop.HoleLevel(hole.id) == 1);
-            Check("1号洞积分增加 25", p1 == p0 + 25);
-            Check("1号洞升级价格 300", data.credits == 198700 - 300);
+            var explosion = shop.TryUnlockExplosion();
+            Check("解锁引爆扣费 50000", explosion.success && shop.ExplosionUnlocked && data.credits == 124000);
+            Check("引爆不会重复扣费", !shop.TryUnlockExplosion().success && data.credits == 124000);
 
-            var up2 = shop.TryUpgradeHole(hole);
-            Check("1号洞升级二次价格递增为 480", up2.success && data.credits == 198700 - 300 - 480);
-            var up3 = shop.TryUpgradeHole(hole);
-            Check("1号洞可升到三级", up3.success && shop.HoleLevel(hole.id) == 3);
-            var up4 = shop.TryUpgradeHole(hole);
-            Check("1号洞三级封顶", !up4.success && shop.HoleLevel(hole.id) == 3);
-            Check("满级后积分为 125", shop.HolePoints(hole) == 125);
+            var reduce = shop.TryReduceBaffle();
+            Check("移除挡板扣费 20000", reduce.success && shop.BaffleCount == 0 && data.credits == 104000);
+            Check("没有挡板时无法继续移除", !shop.CanReduceBaffle && !shop.TryReduceBaffle().success);
 
-            shop.TryBuyBall("ball_02", 4);
-            Check("本次商店最多购买 5 颗", shop.ShopVisitPurchaseCount == 5);
-            var over = shop.TryBuyBall("ball_02", 1);
-            Check("超过 5 颗后购买被拒绝", !over.success);
-
-            shop.BeginShopVisit();
-            var unlock3 = shop.TryUnlockBall("ball_03");
-            Check("解锁稀有弹珠成功", unlock3.success);
-            var buy3 = shop.TryBuyBall("ball_03", 1);
-            Check("稀有弹珠单价 1000", buy3.success && shop.StockOf("ball_03") == 1);
-            Check("弹珠库存可消耗", data.ConsumeStock("ball_03", 1) && data.GetStock("ball_03") == 0);
-            Check("库存不足时不能消耗", !data.ConsumeStock("ball_03", 1));
+            var poor = SaveData.CreateNew(config);
+            var poorShop = new ShopManager(config, poor, false);
+            Check("积分不足时无法兑换", !poorShop.TryUnlockNextEnchant().success &&
+                !poorShop.TryUnlockExplosion().success && !poorShop.TryReduceBaffle().success &&
+                poor.credits == 0);
         }
 
         private static void MagazineTest(GameConfig config)
         {
-            var data = SaveData.CreateNew(config);
-            var emptyMagazine = MagazineBuilder.Build(config, data);
-            Check("无付费弹珠时弹仓只有 3 颗免费标准弹珠",
-                emptyMagazine.Count == 3 && emptyMagazine.TrueForAll(b => b.id == "ball_01"));
-
-            data.AddUnlockedBall("ball_02");
-            data.AddUnlockedBall("ball_03");
-            data.AddStock("ball_02", 3);
-            data.AddStock("ball_03", 1);
-            var magazine = MagazineBuilder.Build(config, data);
-            Check("购买的全部付费弹珠一起装填", magazine.Count == 7);
-            Check("弹仓先装强化再装稀有，最后补免费标准",
-                magazine[0].id == "ball_02" && magazine[1].id == "ball_02" && magazine[2].id == "ball_02" &&
-                magazine[3].id == "ball_03" && magazine[4].id == "ball_01" && magazine[6].id == "ball_01");
-
-            var counts = MagazineBuilder.CountByBall(magazine);
-            Check("弹仓计数：强化 3 / 稀有 1 / 标准 3",
-                counts["ball_02"] == 3 && counts["ball_03"] == 1 && counts["ball_01"] == 3);
+            var magazine = MagazineBuilder.Build(config);
+            Check("无限弹仓固定装填 3 颗", magazine.Count == 3);
+            Check("弹仓全部是标准白球", magazine.TrueForAll(b => b.id == "ball_01"));
         }
 
         private static void SaveRoundTripTest(GameConfig config)
         {
             var data = SaveData.CreateNew(config);
-            data.credits = 12345;
             data.totalScore = 67890;
+            data.credits = 12345;
             data.bestSingleScore = 9876;
             data.bestVolleyScore = 45678;
-            data.milestoneIndex = 3;
-            data.emberLevel = 2;
-            data.frostLevel = 1;
-            data.gildLevel = 3;
-            data.splitLevel = 2;
-            data.bounceLevel = 1;
-            data.magnetLevel = 3;
-            data.AddUnlockedBall("ball_03");
-            data.AddStock("ball_03", 4);
-            data.SetHoleLevel("hole_03", 2);
-            data.SetHoleSkillLevel("hole_05", 2);
+            data.bestLoopScore = 7890;
+            data.loopIndex = 7;
+            data.goalReached = false;
+            data.enchantTier = 1;
+            data.explosionUnlocked = true;
+            data.baffleCount = 2;
+            data.tiltCalibration = 0.12f;
+            data.tiltInverted = true;
+
             string json = JsonUtility.ToJson(data);
             var copy = JsonUtility.FromJson<SaveData>(json);
             copy.EnsureIntegrity(config);
-            Check("存档 JSON 往返保留累计得分", copy.totalScore == 67890);
-            Check("存档 JSON 往返保留可用积分", copy.credits == 12345);
-            Check("存档 JSON 往返保留最高单轮", copy.bestVolleyScore == 45678);
-            Check("存档 JSON 往返保留里程碑进度", copy.milestoneIndex == 3);
-            Check("存档 JSON 往返保留附魔等级",
-                copy.emberLevel == 2 && copy.frostLevel == 1 && copy.gildLevel == 3);
-            Check("存档 JSON 往返保留弹珠技能等级",
-                copy.splitLevel == 2 && copy.bounceLevel == 1 && copy.magnetLevel == 3);
-            Check("存档 JSON 往返保留奖励洞技能等级", copy.GetHoleSkillLevel("hole_05") == 2);
-            Check("存档 JSON 往返保留解锁状态", copy.IsBallUnlocked("ball_03"));
-            Check("存档 JSON 往返保留弹珠库存", copy.GetStock("ball_03") == 4);
-            Check("存档 JSON 往返保留奖励洞等级", copy.GetHoleLevel("hole_03") == 2);
+            Check("存档往返保留累计得分", copy.totalScore == 67890);
+            Check("存档往返保留可用积分", copy.credits == 12345);
+            Check("存档往返保留最高齐射/循环", copy.bestVolleyScore == 45678 && copy.bestLoopScore == 7890);
+            Check("存档往返保留循环进度", copy.loopIndex == 7);
+            Check("存档往返保留附魔/引爆/挡板",
+                copy.enchantTier == 1 && copy.explosionUnlocked && copy.baffleCount == 2);
+            Check("存档往返保留倾斜校准", Mathf.Approximately(copy.tiltCalibration, 0.12f) && copy.tiltInverted);
+
+            var legacy = new SaveData { version = 4, totalScore = 123456, credits = 5000 };
+            legacy.EnsureIntegrity(config);
+            Check("旧存档迁移后循环从第 1 轮开始", legacy.version == 5 && legacy.loopIndex == 1);
+            Check("旧存档迁移后兑换进度重置",
+                legacy.enchantTier == 0 && !legacy.explosionUnlocked &&
+                legacy.baffleCount == config.economy.startingBaffleCount);
         }
 
         private static void EconomyTest(GameConfig config)
         {
-            // 设计假设的八洞命中分布（奖励洞与空穴交替），用于验证经济模型。实际命中率受物理与玩家倾斜影响。
+            Check("积分折算为得分的 100%", ScoreRules.CreditsFor(1000) == 1000);
+            Check("同洞连击上限为 ×8", ScoreRules.ComboMultiplierFor(4) == 8 &&
+                ScoreRules.ComboMultiplierFor(99) == ScoreRules.ComboCap);
+
+            // 设计假设的八洞命中分布（奖励洞与空穴交替），用于验证单发期望收益。
             float[] probabilities = { 0.18f, 0.16f, 0.18f, 0.15f, 0.13f, 0.10f, 0.06f, 0.04f };
             float expectedStandard = 0f;
             for (int i = 0; i < config.holes.Length && i < probabilities.Length; i++)
@@ -350,12 +259,8 @@ namespace PachinkoEditor
                 expectedStandard += probabilities[i] * config.holes[i].multiplier * config.holes[i].basePoints;
             }
 
-            float expectedBall2 = expectedStandard * config.GetBall("ball_02").multiplier;
-            float expectedBall3 = expectedStandard * config.GetBall("ball_03").multiplier;
-            Check("标准弹珠期望收益在 500~650 之间", expectedStandard >= 500f && expectedStandard <= 650f);
-            Check("期望收益 ball_02 投入产出比 > 1.3", expectedBall2 / 500f >= 1.3f);
-            Check("期望收益 ball_03 投入产出比 > 1.3", expectedBall3 / 1000f >= 1.3f);
-            Check("默认经济配置每次购买上限为 5", config.economy.maxBallsPerShopVisit == 5);
+            Check("标准白球单发期望收益在 500~650 之间", expectedStandard >= 500f && expectedStandard <= 650f);
+            Check("附魔 ×2 后单发期望收益翻倍到 1000 以上", expectedStandard * 2f >= 1000f && expectedStandard * 2f <= 1300f);
         }
 
         private static void Check(string name, bool condition)

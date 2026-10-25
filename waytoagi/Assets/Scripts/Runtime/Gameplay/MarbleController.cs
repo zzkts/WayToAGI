@@ -7,15 +7,16 @@ namespace Pachinko
     /// <summary>
     /// 弹珠表现与物理控制。齐射时由 GameManager 在弹簧回弹的同一帧统一赋初速度，
     /// 之后的飞行、反弹与落洞全部交给 Unity 2D 物理。
+    /// V3 中弹珠外观由当前附魔决定；解锁引爆后，每累计碰撞若干次会冲击附近弹珠。
     /// </summary>
     public class MarbleController : MonoBehaviour
     {
-        public BallDef Def { get; private set; }
         public Rigidbody2D Body => _body;
         public Collider2D Collider => _collider;
         public float Radius => _collider != null ? _collider.radius : 0.1f;
         public bool IsCaptured { get; private set; }
         public bool IsInFlight { get; private set; }
+        public int CollisionCount => _collisionCount;
         public event Action Lost;
 
         private GameConfig _config;
@@ -27,11 +28,14 @@ namespace Pachinko
         private SpriteRenderer _inner;
         private SpriteRenderer _highlight;
         private TrailRenderer _trail;
+        private Color _fillColor = Theme.Cream;
         private bool _lostRaised;
         private float _lowSpeedTime;
         private float _flightTime;
-        private float _magnetAcceleration;
-        private float _magnetTargetX;
+
+        private ExplosionSettings _explosion;
+        private bool _explosionUnlocked;
+        private int _collisionCount;
 
         public void Initialize(GameConfig config)
         {
@@ -79,31 +83,39 @@ namespace Pachinko
             if (trailShader != null) _trail.material = new Material(trailShader);
             _trail.emitting = false;
 
+            SetAppearance(config.GetStandardBall(), null);
+            SetExplosion(config.explosion, false);
             gameObject.SetActive(false);
         }
 
-        public void SetBall(BallDef def)
+        /// <summary>附魔决定弹珠主体、描边、高光与拖尾颜色；未附魔时使用标准白球配色。</summary>
+        public void SetAppearance(BallDef standardBall, EnchantDef enchant)
         {
-            Def = def;
-            if (def == null) return;
-            var color = Theme.BallColor(def);
-            var outline = Theme.BallOutline(def);
-            _outline.color = outline;
-            _inner.color = color;
-            _highlight.color = Color.Lerp(color, Color.white, 0.65f).Alpha(0.8f);
-            _shadow.color = Theme.Shadow.Alpha(0.42f);
+            Color fill = enchant != null ? Theme.Hex(enchant.color) : Theme.BallColor(standardBall);
+            Color outline = enchant != null ? Theme.Darken(fill, 0.36f) : Theme.BallOutline(standardBall);
+            _fillColor = fill;
+            if (_outline != null) _outline.color = outline;
+            if (_inner != null) _inner.color = fill;
+            if (_highlight != null) _highlight.color = Color.Lerp(fill, Color.white, 0.65f).Alpha(0.8f);
+            if (_shadow != null) _shadow.color = Theme.Shadow.Alpha(0.42f);
             if (_trail != null)
             {
                 var gradient = new Gradient();
                 gradient.SetKeys(
                     new[]
                     {
-                        new GradientColorKey(color, 0f),
-                        new GradientColorKey(Theme.Lighten(color, 0.2f), 1f)
+                        new GradientColorKey(fill, 0f),
+                        new GradientColorKey(Theme.Lighten(fill, 0.2f), 1f)
                     },
-                    new[] { new GradientAlphaKey(0.42f, 0f), new GradientAlphaKey(0f, 1f) });
+                    new[] { new GradientAlphaKey(0.5f, 0f), new GradientAlphaKey(0f, 1f) });
                 _trail.colorGradient = gradient;
             }
+        }
+
+        public void SetExplosion(ExplosionSettings settings, bool unlocked)
+        {
+            _explosion = settings;
+            _explosionUnlocked = unlocked && settings != null;
         }
 
         public void PrepareAt(Vector2 position)
@@ -114,6 +126,7 @@ namespace Pachinko
             _lostRaised = false;
             _lowSpeedTime = 0f;
             _flightTime = 0f;
+            _collisionCount = 0;
             gameObject.SetActive(true);
             _body.simulated = true;
             _body.bodyType = RigidbodyType2D.Kinematic;
@@ -154,18 +167,6 @@ namespace Pachinko
             _body.linearVelocity = velocity;
         }
 
-        /// <summary>每轮开始前配置弹跳与磁引；两者是彼此独立的飞行行为。</summary>
-        public void ConfigureFlightSkills(float bounceMultiplier, float magnetAcceleration, float magnetTargetX)
-        {
-            if (_collider != null && _collider.sharedMaterial != null)
-            {
-                _collider.sharedMaterial.bounciness =
-                    Mathf.Clamp(_config.physics.ballBounciness * Mathf.Max(0.1f, bounceMultiplier), 0f, 1f);
-            }
-            _magnetAcceleration = Mathf.Max(0f, magnetAcceleration);
-            _magnetTargetX = magnetTargetX;
-        }
-
         public void CaptureInto(Vector2 holeCenter)
         {
             if (IsCaptured) return;
@@ -203,13 +204,63 @@ namespace Pachinko
             gameObject.SetActive(false);
         }
 
-        private void FixedUpdate()
+        private void OnCollisionEnter2D(Collision2D collision)
         {
-            if (!IsInFlight || IsCaptured || _magnetAcceleration <= 0f) return;
-            float deltaX = _magnetTargetX - transform.position.x;
-            if (Mathf.Abs(deltaX) < 0.035f) return;
-            float direction = Mathf.Sign(deltaX);
-            _body.AddForce(new Vector2(direction * _magnetAcceleration * _body.mass, 0f), ForceMode2D.Force);
+            if (!IsInFlight || IsCaptured || !_explosionUnlocked || _explosion == null) return;
+
+            _collisionCount++;
+            if (_collisionCount < _explosion.triggerCollisions) return;
+            _collisionCount = 0;
+            Explode();
+        }
+
+        /// <summary>引爆：对半径内的其他飞行中弹珠施加一次向外冲量，不造成伤害或直接得分。</summary>
+        private void Explode()
+        {
+            Vector2 center = transform.position;
+            Collider2D[] hits = Physics2D.OverlapCircleAll(center, _explosion.radius);
+            int affected = 0;
+            foreach (var hit in hits)
+            {
+                if (hit == null || hit == _collider) continue;
+                var other = hit.GetComponent<MarbleController>();
+                if (other == null || other == this || !other.IsInFlight || other.IsCaptured) continue;
+
+                Vector2 delta = (Vector2)other.transform.position - center;
+                Vector2 dir = delta.sqrMagnitude > 0.0001f
+                    ? delta.normalized
+                    : UnityEngine.Random.insideUnitCircle.normalized;
+                other.Body.AddForce(dir * (_explosion.force * other.Body.mass), ForceMode2D.Impulse);
+                other.Body.WakeUp();
+                affected++;
+            }
+
+            StartCoroutine(ExplosionVisual());
+            Debug.Log($"[Explosion] pos={center}, radius={_explosion.radius:F2}, affected={affected}");
+        }
+
+        private IEnumerator ExplosionVisual()
+        {
+            var go = new GameObject("ExplosionFx");
+            go.transform.SetParent(transform.parent, false);
+            go.transform.position = transform.position;
+            var renderer = go.AddComponent<SpriteRenderer>();
+            renderer.sprite = Theme.Glow;
+            renderer.sortingOrder = 45;
+            Color color = Theme.Lighten(_fillColor, 0.35f);
+
+            float duration = 0.34f;
+            float t = 0f;
+            while (t < duration)
+            {
+                t += Time.deltaTime;
+                float k = Mathf.Clamp01(t / duration);
+                float size = _explosion.radius * 2f * Mathf.Lerp(0.28f, 1f, k * k * (3f - 2f * k));
+                go.transform.localScale = new Vector3(size, size, 1f);
+                renderer.color = color.Alpha(0.72f * (1f - k));
+                yield return null;
+            }
+            Destroy(go);
         }
 
         private void Update()

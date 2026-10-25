@@ -1,4 +1,3 @@
-using System;
 using UnityEngine;
 
 namespace Pachinko
@@ -15,7 +14,8 @@ namespace Pachinko
     }
 
     /// <summary>
-    /// 购买弹珠、解锁弹珠、升级奖励洞。所有数值来自 game_config.json。
+    /// V3 兑换系统：只保留附魔解锁、引爆技巧、减少挡板三项永久兑换。
+    /// 标准弹珠无限供应，因此不再有弹珠购买、库存与奖励洞升级。
     /// </summary>
     public class ShopManager
     {
@@ -23,238 +23,81 @@ namespace Pachinko
         private readonly SaveData _save;
         private readonly bool _persistToDisk;
 
-        public int ShopVisitPurchaseCount { get; private set; }
-        public int MaxPurchasePerVisit => _config.economy.maxBallsPerShopVisit;
-        public int FreeStandardBalls => _config.economy.freeStandardBallsPerPhase;
         public int Credits => _save.credits;
         public SaveData Save => _save;
-        public event Action Changed;
+        public event System.Action Changed;
 
         public ShopManager(GameConfig config, SaveData save, bool persistToDisk = true)
         {
             _config = config;
             _save = save;
             _persistToDisk = persistToDisk;
-            ShopVisitPurchaseCount = 0;
         }
 
-        public void BeginShopVisit()
+        public int EnchantTier => _save.enchantTier;
+        public int MaxEnchantTier => _config.MaxEnchantTier;
+        public EnchantDef ActiveEnchant => _config.GetEnchant(_save.enchantTier);
+        public EnchantDef NextEnchant => _config.GetEnchant(_save.enchantTier + 1);
+        public int BallMultiplier => ActiveEnchant != null ? Mathf.Max(1, ActiveEnchant.multiplier) : 1;
+        public bool IsEnchantMaxed => _save.enchantTier >= _config.MaxEnchantTier;
+        public int EnchantPrice => _config.EnchantPrice(_save.enchantTier);
+
+        public bool ExplosionUnlocked => _save.explosionUnlocked;
+        public int ExplosionPrice => _config.explosion.unlockPrice;
+
+        public int BaffleCount => _save.baffleCount;
+        public int MaxBaffleCount => _config.MaxBaffleCount;
+        public int BaffleReducePrice => _config.baffle.reduceCost;
+        public bool CanReduceBaffle => _save.baffleCount > 0;
+
+        /// <summary>解锁下一档附魔；附魔会替换弹珠颜色、拖尾颜色与得分倍率。</summary>
+        public ShopResult TryUnlockNextEnchant()
         {
-            ShopVisitPurchaseCount = 0;
-            Changed?.Invoke();
-        }
-
-        public void EndShopVisit()
-        {
-        }
-
-        public bool IsUnlocked(string ballId)
-        {
-            var ball = _config.GetBall(ballId);
-            if (ball == null) return false;
-            return ball.alwaysAvailable || _save.IsBallUnlocked(ballId);
-        }
-
-        public int StockOf(string ballId)
-        {
-            var ball = _config.GetBall(ballId);
-            if (ball == null) return 0;
-            return ball.alwaysAvailable ? int.MaxValue : _save.GetStock(ballId);
-        }
-
-        public int HoleLevel(string holeId)
-        {
-            return _save.GetHoleLevel(holeId);
-        }
-
-        public int EnchantLevel(EnchantId id)
-        {
-            switch (id)
-            {
-                case EnchantId.Ember: return _save.emberLevel;
-                case EnchantId.Frost: return _save.frostLevel;
-                case EnchantId.Gild: return _save.gildLevel;
-                default: return 0;
-            }
-        }
-
-        public int BallSkillLevel(BallSkillId id)
-        {
-            switch (id)
-            {
-                case BallSkillId.Split: return _save.splitLevel;
-                case BallSkillId.Bounce: return _save.bounceLevel;
-                case BallSkillId.Magnet: return _save.magnetLevel;
-                default: return 0;
-            }
-        }
-
-        public int HoleSkillLevel(string holeId)
-        {
-            return _save.GetHoleSkillLevel(holeId);
-        }
-
-        public int EnchantUpgradePrice(EnchantId id)
-        {
-            return UpgradeCatalog.EnchantCost(id, EnchantLevel(id));
-        }
-
-        public int BallSkillUpgradePrice(BallSkillId id)
-        {
-            return UpgradeCatalog.BallSkillCost(id, BallSkillLevel(id));
-        }
-
-        public int HoleSkillUpgradePrice(string holeId)
-        {
-            return UpgradeCatalog.HoleSkillCost(holeId, HoleSkillLevel(holeId));
-        }
-
-        public bool IsEnchantMaxed(EnchantId id)
-        {
-            return EnchantLevel(id) >= UpgradeCatalog.MaxEnchantLevel;
-        }
-
-        public bool IsBallSkillMaxed(BallSkillId id)
-        {
-            return BallSkillLevel(id) >= UpgradeCatalog.MaxBallSkillLevel;
-        }
-
-        public bool IsHoleSkillMaxed(string holeId)
-        {
-            return HoleSkillLevel(holeId) >= UpgradeCatalog.MaxHoleSkillLevel;
-        }
-
-        public int HolePoints(HoleDef hole)
-        {
-            return hole.PointsAtLevel(HoleLevel(hole.id));
-        }
-
-        public int UpgradePrice(HoleDef hole)
-        {
-            return hole.UpgradePriceAtLevel(HoleLevel(hole.id));
-        }
-
-        public bool IsHoleMaxed(HoleDef hole)
-        {
-            return HoleLevel(hole.id) >= hole.maxUpgradeLevel;
-        }
-
-        public ShopResult TryUnlockBall(string ballId)
-        {
-            var ball = _config.GetBall(ballId);
-            if (ball == null) return new ShopResult(false, "找不到该弹珠");
-            if (ball.alwaysAvailable || IsUnlocked(ballId)) return new ShopResult(false, "该弹珠已解锁");
-            if (_save.credits < ball.unlockPrice) return new ShopResult(false, $"积分不足，还差 {ball.unlockPrice - _save.credits}");
-
-            _save.credits -= ball.unlockPrice;
-            _save.AddUnlockedBall(ballId);
-            Persist();
-            return new ShopResult(true, $"已解锁「{ball.displayName}」");
-        }
-
-        public ShopResult TryBuyBall(string ballId, int quantity = 1)
-        {
-            var ball = _config.GetBall(ballId);
-            if (ball == null) return new ShopResult(false, "找不到该弹珠");
-            if (ball.alwaysAvailable) return new ShopResult(false, "标准弹珠免费无限供应，无需购买");
-            if (!IsUnlocked(ballId)) return new ShopResult(false, "请先解锁该弹珠");
-            if (ShopVisitPurchaseCount >= MaxPurchasePerVisit)
-            {
-                return new ShopResult(false, $"本次商店最多购买 {MaxPurchasePerVisit} 颗弹珠");
-            }
-
-            quantity = Mathf.Clamp(quantity, 1, MaxPurchasePerVisit - ShopVisitPurchaseCount);
-            int cost = ball.unitPrice * quantity;
-            if (_save.credits < cost)
-            {
-                return new ShopResult(false, $"积分不足，还差 {cost - _save.credits}");
-            }
-
-            _save.credits -= cost;
-            _save.AddStock(ballId, quantity);
-            ShopVisitPurchaseCount += quantity;
-            Persist();
-            return new ShopResult(true, $"装填 {ball.displayName} ×{quantity}（-{cost} 积分）");
-        }
-
-        public ShopResult TryUpgradeHole(HoleDef hole)
-        {
-            if (hole == null) return new ShopResult(false, "找不到该奖励洞");
-            if (!hole.HasReward) return new ShopResult(false, "空穴没有可升级的奖励");
-            int level = HoleLevel(hole.id);
-            if (level >= hole.maxUpgradeLevel) return new ShopResult(false, "该奖励洞已满级");
-
-            int price = UpgradePrice(hole);
+            if (IsEnchantMaxed) return new ShopResult(false, "附魔已全部解锁");
+            var next = NextEnchant;
+            if (next == null) return new ShopResult(false, "没有可解锁的附魔");
+            int price = EnchantPrice;
             if (_save.credits < price)
             {
-                return new ShopResult(false, $"积分不足，还差 {price - _save.credits}");
+                return new ShopResult(false, $"可用积分不足，还差 {price - _save.credits:N0}");
             }
 
             _save.credits -= price;
-            _save.SetHoleLevel(hole.id, level + 1);
+            _save.enchantTier++;
             Persist();
-            return new ShopResult(true, $"{hole.displayName} 升级至 Lv.{level + 1}，积分 +{hole.upgradePointsPerLevel}");
+            return new ShopResult(true, $"已解锁「{next.displayName}」· 弹珠倍率 ×{next.multiplier}");
         }
 
-        public ShopResult TryUpgradeEnchant(EnchantId id)
+        /// <summary>解锁引爆：每累计碰撞一定次数，冲击附近弹珠。</summary>
+        public ShopResult TryUnlockExplosion()
         {
-            int level = EnchantLevel(id);
-            if (level >= UpgradeCatalog.MaxEnchantLevel) return new ShopResult(false, "该附魔已满级");
-            int price = UpgradeCatalog.EnchantCost(id, level);
-            if (_save.credits < price) return new ShopResult(false, $"积分不足，还差 {price - _save.credits}");
-
-            _save.credits -= price;
-            SetEnchantLevel(id, level + 1);
-            Persist();
-            return new ShopResult(true, $"{UpgradeCatalog.EnchantName(id)} 升至 Lv.{level + 1}");
-        }
-
-        public ShopResult TryUpgradeBallSkill(BallSkillId id)
-        {
-            int level = BallSkillLevel(id);
-            if (level >= UpgradeCatalog.MaxBallSkillLevel) return new ShopResult(false, "该技能已满级");
-            int price = UpgradeCatalog.BallSkillCost(id, level);
-            if (_save.credits < price) return new ShopResult(false, $"积分不足，还差 {price - _save.credits}");
-
-            _save.credits -= price;
-            SetBallSkillLevel(id, level + 1);
-            Persist();
-            return new ShopResult(true, $"{UpgradeCatalog.BallSkillName(id)} 升至 Lv.{level + 1}");
-        }
-
-        public ShopResult TryUpgradeHoleSkill(string holeId)
-        {
-            var skill = UpgradeCatalog.HoleSkillFor(holeId);
-            if (skill == HoleSkillId.None) return new ShopResult(false, "该奖励洞没有技能");
-            int level = HoleSkillLevel(holeId);
-            if (level >= UpgradeCatalog.MaxHoleSkillLevel) return new ShopResult(false, "该洞技能已满级");
-            int price = UpgradeCatalog.HoleSkillCost(holeId, level);
-            if (_save.credits < price) return new ShopResult(false, $"积分不足，还差 {price - _save.credits}");
-
-            _save.credits -= price;
-            _save.SetHoleSkillLevel(holeId, level + 1);
-            Persist();
-            return new ShopResult(true, $"{UpgradeCatalog.HoleSkillName(skill)} 升至 Lv.{level + 1}");
-        }
-
-        private void SetEnchantLevel(EnchantId id, int level)
-        {
-            switch (id)
+            if (_save.explosionUnlocked) return new ShopResult(false, "引爆技巧已解锁");
+            int price = ExplosionPrice;
+            if (_save.credits < price)
             {
-                case EnchantId.Ember: _save.emberLevel = level; break;
-                case EnchantId.Frost: _save.frostLevel = level; break;
-                case EnchantId.Gild: _save.gildLevel = level; break;
+                return new ShopResult(false, $"可用积分不足，还差 {price - _save.credits:N0}");
             }
+
+            _save.credits -= price;
+            _save.explosionUnlocked = true;
+            Persist();
+            return new ShopResult(true, $"已解锁「引爆技巧」· 每 {_config.explosion.triggerCollisions} 次碰撞触发");
         }
 
-        private void SetBallSkillLevel(BallSkillId id, int level)
+        /// <summary>花费积分移除一块挡板，最低减到 0 块。</summary>
+        public ShopResult TryReduceBaffle()
         {
-            switch (id)
+            if (!CanReduceBaffle) return new ShopResult(false, "已经没有挡板可以移除");
+            int price = BaffleReducePrice;
+            if (_save.credits < price)
             {
-                case BallSkillId.Split: _save.splitLevel = level; break;
-                case BallSkillId.Bounce: _save.bounceLevel = level; break;
-                case BallSkillId.Magnet: _save.magnetLevel = level; break;
+                return new ShopResult(false, $"可用积分不足，还差 {price - _save.credits:N0}");
             }
+
+            _save.credits -= price;
+            _save.baffleCount = Mathf.Max(0, _save.baffleCount - 1);
+            Persist();
+            return new ShopResult(true, $"已移除一块挡板，剩余 {_save.baffleCount} 块");
         }
 
         private void Persist()

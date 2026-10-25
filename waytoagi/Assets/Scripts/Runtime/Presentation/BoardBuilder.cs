@@ -42,7 +42,7 @@ namespace Pachinko
         public Camera Camera;
         public RewardHole[] Holes;
         public List<PinView> Pins = new List<PinView>();
-        public List<RotatingBar> RotatingBars = new List<RotatingBar>();
+        public List<Baffle> Baffles = new List<Baffle>();
         public Text LauncherHint;
         public Bounds VisualBounds;
         public OneWayLaneGate LaneGate;
@@ -82,7 +82,7 @@ namespace Pachinko
             refs.Effects.SetParent(root, false);
 
             BuildPins(refs.Playfield);
-            BuildRotatingBars(refs.Playfield);
+            BuildBaffles(refs.Playfield, config);
             BuildBottomRamps(refs.Playfield);
 
             BuildWorldLabels(refs, camera);
@@ -313,7 +313,7 @@ namespace Pachinko
             // 上半区只保留普通交错钉阵，不再用钉柱拼弧线；弧线属于上边框（见 BuildRails）。
             // 半圆向上拱到原顶边之上，钉阵不需要为弧线让出下方空间；保持五排、
             // 最高一排 y=3.15，给上方半圆凹槽留出完整的飞行空间。
-            // 最下一排保持 y=0.60：旋转平台 A 转到竖直时顶缘约 0.37，再往下会在旋转范围内。
+            // 最下一排保持 y=0.60：挡板 A 的顶缘约 -0.83，给钉阵与摆动挡板之间留出穿行空间。
             float[] wideRow = { -3.05f, -1.75f, -0.45f, 0.85f, 2.15f };
             float[] offsetRow = { -2.40f, -1.10f, 0.20f, 1.50f };
             float[] rows = { 3.15f, 2.51f, 1.88f, 1.24f, 0.60f };
@@ -351,20 +351,23 @@ namespace Pachinko
             pin.Initialize(visual, inner);
         }
 
-        private static void BuildRotatingBars(Transform parent)
+        /// <summary>
+        /// 三块横向挡板在钉柱区下方左 / 右 / 中错落分布，纵向间隔约 0.9。
+        /// V3 中挡板不再旋转，而是按配置的周期与总幅度左右往返摆动；
+        /// 位置与长度经过约束，保证摆到两端时仍留在机台侧壁和发射道隔板之间。
+        /// </summary>
+        private static void BuildBaffles(Transform parent, GameConfig config)
         {
-            // 三条活动平台在钉柱区下方左 / 右 / 中错落分布，纵向间隔约 0.9。
-            CreateRotatingBar(parent, "Rotator_A", new Vector2(-1.55f, -0.95f), 2.40f, 16f, 0f);
-            CreateRotatingBar(parent, "Rotator_B", new Vector2(1.30f, -1.85f), 2.00f, -13f, 22f);
-            CreateRotatingBar(parent, "Rotator_C", new Vector2(-0.10f, -2.80f), 2.50f, 11f, -10f);
+            CreateBaffle(parent, config, "Baffle_A", new Vector2(-1.55f, -0.95f), 2.40f, 0f);
+            CreateBaffle(parent, config, "Baffle_B", new Vector2(1.05f, -1.85f), 1.80f, Mathf.PI * 0.66f);
+            CreateBaffle(parent, config, "Baffle_C", new Vector2(-0.10f, -2.80f), 2.50f, Mathf.PI * 1.33f);
         }
 
-        private static void CreateRotatingBar(Transform parent, string name, Vector2 pos, float length, float speed, float initialAngle)
+        private static void CreateBaffle(Transform parent, GameConfig config, string name, Vector2 pos, float length, float phase)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
             go.transform.localPosition = pos;
-            go.transform.localRotation = Quaternion.Euler(0, 0, initialAngle);
 
             var body = go.AddComponent<Rigidbody2D>();
             body.bodyType = RigidbodyType2D.Kinematic;
@@ -373,15 +376,15 @@ namespace Pachinko
             collider.size = new Vector2(length, 0.24f);
             collider.sharedMaterial = _barMaterial;
 
-            var shadow = Theme.RoundedRect(go.transform, "Shadow", new Vector2(0.03f, -0.06f), new Vector2(length + 0.12f, 0.40f), Theme.Shadow.Alpha(0.45f), 20, 24);
-            var frame = Theme.RoundedRect(go.transform, "Frame", Vector2.zero, new Vector2(length + 0.10f, 0.36f), Theme.Hex("#2A6670"), 18, 25);
-            var inner = Theme.RoundedRect(go.transform, "Inner", Vector2.zero, new Vector2(length, 0.24f), Theme.TealBright, 16, 26);
+            Theme.RoundedRect(go.transform, "Shadow", new Vector2(0.03f, -0.06f), new Vector2(length + 0.12f, 0.40f), Theme.Shadow.Alpha(0.45f), 20, 24);
+            Theme.RoundedRect(go.transform, "Frame", Vector2.zero, new Vector2(length + 0.10f, 0.36f), Theme.Hex("#2A6670"), 18, 25);
+            Theme.RoundedRect(go.transform, "Inner", Vector2.zero, new Vector2(length, 0.24f), Theme.TealBright, 16, 26);
             Theme.CircleObject(go.transform, "CapL", new Vector2(-length * 0.5f, 0f), 0.32f, Theme.Amber, 27);
             Theme.CircleObject(go.transform, "CapR", new Vector2(length * 0.5f, 0f), 0.32f, Theme.Amber, 27);
-            Theme.CircleObject(go.transform, "Hub", Vector2.zero, 0.18f, Theme.Ink.Alpha(0.65f), 28);
+            Theme.RoundedRect(go.transform, "Hub", Vector2.zero, new Vector2(0.32f, 0.10f), Theme.Ink.Alpha(0.55f), 3, 28);
 
-            var bar = go.AddComponent<RotatingBar>();
-            bar.Initialize(speed);
+            var baffle = go.AddComponent<Baffle>();
+            baffle.Initialize(config.baffle.amplitude, config.baffle.period, phase);
         }
 
         private static void BuildBottomRamps(Transform parent)
@@ -417,6 +420,8 @@ namespace Pachinko
 
         private static void BuildHoles(BoardRefs refs, GameConfig config)
         {
+            // V3 策划案 5.2 明确把“三个奖励洞（×1/1000、×3/5000、×5/20000）”标为废案，
+            // 并要求采用原有设计，因此这里保留 V2 的 8 洞布局（4 奖励洞 + 4 空穴）。
             var holeRoot = new GameObject("Holes").transform;
             holeRoot.SetParent(refs.Root, false);
             refs.Holes = new RewardHole[config.holes.Length];
@@ -476,7 +481,7 @@ namespace Pachinko
                 collider.isTrigger = true;
                 collider.size = new Vector2(bayWidth, 1.16f);
                 var rewardHole = trigger.AddComponent<RewardHole>();
-                rewardHole.Initialize(hole, hole.PointsAtLevel(0), label, glow);
+                rewardHole.Initialize(hole, hole.basePoints, label, glow);
                 refs.Holes[i] = rewardHole;
             }
 
