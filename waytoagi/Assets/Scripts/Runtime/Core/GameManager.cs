@@ -122,6 +122,7 @@ namespace Pachinko
             RefreshHoleViews();
             Hud = HUDController.Create(this, config, camera, board, tilt, launcher);
             Hud.ShowMenu();
+            AudioManager.PlayBgm("menu_loop");
         }
 
         public void StartGame()
@@ -156,6 +157,7 @@ namespace Pachinko
             }
 
             State = GameState.Aim;
+            AudioManager.PlayBgm("main_loop");
             Tilt.SetControl(false, true);
             CurrentShotScore = 0;
             _goalReachedThisVolley = false;
@@ -213,6 +215,7 @@ namespace Pachinko
             VolleyResolved = 0;
             VolleyHits = 0;
             CurrentShotScore = 0;
+            AudioManager.Play("launch");
             Tilt.SetControl(true);
 
             int n = _activeMarbles.Count;
@@ -310,6 +313,10 @@ namespace Pachinko
             SaveSystem.Save(SaveData);
             Debug.Log($"[Hole] {hole.Def.id} ball=×{result.ballMultiplier} hole=×{result.holeMultiplier} points={result.holePoints} combo=×{result.comboMultiplier} total={result.total} loop={Loop.AttemptScore:N0} resolved={VolleyResolved}/{VolleyTotalBalls}");
 
+            // 落洞基础音与当前连击等级音同时播放；连击 5 级及以上持续使用 5 级音。
+            AudioManager.Play("score_base");
+            AudioManager.Play($"combo_{Mathf.Clamp(result.comboCount, 1, 5):00}");
+
             EvaluateGoal();
             marble.CaptureInto(new Vector2(hole.Def.positionX, BoardGeometry.HoleCenterY));
             Hud.PlayScorePopup(result, new Vector3(hole.Def.positionX, BoardGeometry.HoleCenterY + 0.9f, 0f));
@@ -378,6 +385,7 @@ namespace Pachinko
                 // 再显示通关面板，避免跳过 EndLoopAttempt 后丢失最高循环统计。
                 if (Loop.AttemptComplete) Score.RecordLoopScore(Loop.AttemptScore);
                 State = GameState.Victory;
+                AudioManager.Play("win");
                 Hud.HideAllModals();
                 Hud.ShowVictory();
                 Hud.RefreshAll();
@@ -406,6 +414,9 @@ namespace Pachinko
             Debug.Log(passed
                 ? $"[Loop] 第 {Loop.LoopIndex} 循环达标：{Loop.AttemptScore:N0} / {Loop.Threshold:N0}，进入兑换"
                 : $"[Loop] 第 {Loop.LoopIndex} 循环未达标：{Loop.AttemptScore:N0} / {Loop.Threshold:N0}，可重试");
+
+            if (!passed) AudioManager.Play("fail");
+            AudioManager.PlayBgm("shop_loop");
 
             State = GameState.Exchange;
             Hud.HideAllModals();
@@ -440,6 +451,7 @@ namespace Pachinko
         {
             if (State != GameState.Exchange) return;
             var result = Shop.TryUnlockNextEnchant();
+            if (result.success) AudioManager.Play("ui_unlock");
             Hud.ShowToast(result.message);
             Hud.RefreshAll();
         }
@@ -448,6 +460,7 @@ namespace Pachinko
         {
             if (State != GameState.Exchange) return;
             var result = Shop.TryUnlockExplosion();
+            if (result.success) AudioManager.Play("ui_unlock");
             Hud.ShowToast(result.message);
             Hud.RefreshAll();
         }
@@ -456,6 +469,7 @@ namespace Pachinko
         {
             if (State != GameState.Exchange) return;
             var result = Shop.TryReduceBaffle();
+            if (result.success) AudioManager.Play("ui_unlock");
             Hud.ShowToast(result.message);
             Hud.RefreshAll();
         }
@@ -471,6 +485,7 @@ namespace Pachinko
                 _pendingLoopAdvance = true;
                 _pendingLoopRetry = false;
                 State = GameState.Exchange;
+                AudioManager.PlayBgm("shop_loop");
                 Hud.HideAllModals();
                 Hud.ShowExchange(true, true);
                 Hud.RefreshAll();

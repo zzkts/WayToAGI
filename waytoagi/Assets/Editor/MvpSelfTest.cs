@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Pachinko;
 using UnityEditor;
@@ -24,6 +25,7 @@ namespace PachinkoEditor
                 config.Validate();
 
                 ConfigTest(config);
+                AudioTest();
                 ScoreTest(config);
                 ComboResetTest(config);
                 LoopTest(config);
@@ -91,6 +93,111 @@ namespace PachinkoEditor
                 Mathf.Approximately(config.explosion.force, 8f));
             Check("挡板：幅度 120px、周期 2 秒", Mathf.Approximately(config.baffle.amplitude, 1.2f) &&
                 Mathf.Approximately(config.baffle.period, 2f));
+        }
+
+        private static void AudioTest()
+        {
+            string configPath = "Assets/StreamingAssets/audio_config.json";
+            Check("音频配置存在", File.Exists(configPath));
+            if (!File.Exists(configPath)) return;
+
+            var audio = JsonUtility.FromJson<AudioConfig>(File.ReadAllText(configPath));
+            Check("音效配置 14 条", audio != null && audio.sfx != null && audio.sfx.Length == 14);
+            Check("BGM 配置 3 条", audio != null && audio.bgm != null && audio.bgm.Length == 3);
+            if (audio == null || audio.sfx == null || audio.bgm == null) return;
+
+            Check("音频文件数量与配置一致",
+                Directory.GetFiles("Assets/Resources/Audio/SFX", "*.mp3").Length == audio.sfx.Length &&
+                Directory.GetFiles("Assets/Resources/Audio/Music", "*.mp3").Length == audio.bgm.Length);
+
+            var sfxIds = new HashSet<string>();
+            bool sfxFilesOk = true;
+            bool sfxImportOk = true;
+            foreach (var def in audio.sfx)
+            {
+                if (def == null || string.IsNullOrEmpty(def.id) || string.IsNullOrEmpty(def.file))
+                {
+                    sfxFilesOk = false;
+                    continue;
+                }
+                sfxIds.Add(def.id);
+
+                string path = "Assets/Resources/Audio/SFX/" + def.file;
+                if (!File.Exists(path))
+                {
+                    sfxFilesOk = false;
+                    Debug.LogError($"[SELFTEST] 缺少音效文件：{path}");
+                    continue;
+                }
+                if (AssetDatabase.LoadAssetAtPath<AudioClip>(path) == null) sfxImportOk = false;
+
+                var importer = AssetImporter.GetAtPath(path) as AudioImporter;
+                AudioImporterSampleSettings settings = default(AudioImporterSampleSettings);
+                if (importer != null) settings = importer.defaultSampleSettings;
+                if (settings.loadType != AudioClipLoadType.DecompressOnLoad ||
+                    settings.compressionFormat != AudioCompressionFormat.Vorbis)
+                {
+                    sfxImportOk = false;
+                    Debug.LogError($"[SELFTEST] 音效导入设置不符合标准：{def.file}");
+                }
+            }
+
+            string[] requiredSfx =
+            {
+                "score_base", "combo_01", "combo_02", "combo_03", "combo_04", "combo_05",
+                "launch", "hit_peg", "hit_baffle", "explode", "ui_click", "ui_unlock", "fail", "win"
+            };
+            bool allSfxHooked = true;
+            foreach (var id in requiredSfx)
+            {
+                if (!sfxIds.Contains(id))
+                {
+                    allSfxHooked = false;
+                    Debug.LogError($"[SELFTEST] 配置缺少事件音效 ID：{id}");
+                }
+            }
+            Check("全部音效文件存在且 ID 唯一", sfxFilesOk && sfxIds.Count == audio.sfx.Length);
+            Check("全部音效已按交付标准导入", sfxImportOk);
+            Check("落洞 / 连击 / 发射 / 碰撞 / 爆炸 / UI / 胜负音效已接线", allSfxHooked);
+
+            var bgmIds = new HashSet<string>();
+            bool bgmFilesOk = true;
+            bool bgmImportOk = true;
+            bool bgmRulesOk = true;
+            foreach (var def in audio.bgm)
+            {
+                if (def == null || string.IsNullOrEmpty(def.id) || string.IsNullOrEmpty(def.file))
+                {
+                    bgmFilesOk = false;
+                    continue;
+                }
+                bgmIds.Add(def.id);
+
+                string path = "Assets/Resources/Audio/Music/" + def.file;
+                if (!File.Exists(path))
+                {
+                    bgmFilesOk = false;
+                    Debug.LogError($"[SELFTEST] 缺少 BGM 文件：{path}");
+                    continue;
+                }
+                if (AssetDatabase.LoadAssetAtPath<AudioClip>(path) == null) bgmImportOk = false;
+
+                var importer = AssetImporter.GetAtPath(path) as AudioImporter;
+                AudioImporterSampleSettings settings = default(AudioImporterSampleSettings);
+                if (importer != null) settings = importer.defaultSampleSettings;
+                if (settings.loadType != AudioClipLoadType.Streaming)
+                {
+                    bgmImportOk = false;
+                    Debug.LogError($"[SELFTEST] BGM 导入设置不符合标准：{def.file}");
+                }
+                if (!def.loop || def.fadeInMs <= 0 || def.fadeOutMs < 0) bgmRulesOk = false;
+            }
+
+            Check("三首 BGM 已配置 main / menu / shop",
+                bgmIds.Contains("main_loop") && bgmIds.Contains("menu_loop") && bgmIds.Contains("shop_loop"));
+            Check("BGM 文件存在且循环 / 淡入淡出有效", bgmFilesOk && bgmImportOk && bgmRulesOk);
+            Check("BGM 电平比音效低约 10 dB",
+                audio.bgm[0].volumeDb <= -12f && audio.sfx[0].volumeDb >= -2f);
         }
 
         private static void ScoreTest(GameConfig config)

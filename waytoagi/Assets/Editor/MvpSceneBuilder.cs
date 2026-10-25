@@ -176,15 +176,21 @@ namespace PachinkoEditor
 
         private static void SyncConfig()
         {
-            string streaming = "Assets/StreamingAssets/game_config.json";
-            string resources = "Assets/Resources/Config/game_config.json";
+            SyncConfigFile("game_config.json");
+            SyncConfigFile("audio_config.json");
+        }
+
+        private static void SyncConfigFile(string fileName)
+        {
+            string streaming = "Assets/StreamingAssets/" + fileName;
+            string resources = "Assets/Resources/Config/" + fileName;
             if (!File.Exists(streaming))
             {
-                throw new FileNotFoundException("缺少主配置文件 Assets/StreamingAssets/game_config.json");
+                throw new FileNotFoundException("缺少主配置文件 " + streaming);
             }
             File.Copy(streaming, resources, true);
             AssetDatabase.ImportAsset(resources, ImportAssetOptions.ForceUpdate);
-            Debug.Log("[BUILD] 数值配置已同步到 Resources 兜底路径。");
+            Debug.Log($"[BUILD] 配置已同步到 Resources 兜底路径：{fileName}");
         }
 
         private static void EnsureAndroidSupport()

@@ -206,7 +206,19 @@ namespace Pachinko
 
         private void OnCollisionEnter2D(Collision2D collision)
         {
-            if (!IsInFlight || IsCaptured || !_explosionUnlocked || _explosion == null) return;
+            if (!IsInFlight || IsCaptured) return;
+
+            // 碰撞音只区分钉柱与挡板；墙面、闸门和弹珠互撞不发声。
+            if (collision.collider.GetComponent<Baffle>() != null)
+            {
+                AudioManager.Play("hit_baffle");
+            }
+            else if (collision.collider.GetComponent<PinView>() != null)
+            {
+                AudioManager.Play("hit_peg");
+            }
+
+            if (!_explosionUnlocked || _explosion == null) return;
 
             _collisionCount++;
             if (_collisionCount < _explosion.triggerCollisions) return;
@@ -217,6 +229,7 @@ namespace Pachinko
         /// <summary>引爆：对半径内的其他飞行中弹珠施加一次向外冲量，不造成伤害或直接得分。</summary>
         private void Explode()
         {
+            AudioManager.Play("explode");
             Vector2 center = transform.position;
             Collider2D[] hits = Physics2D.OverlapCircleAll(center, _explosion.radius);
             int affected = 0;

@@ -20,6 +20,8 @@ namespace Pachinko
         private Text _settingsBestText;
         private Text _settingsCalibrationNote;
         private UIButton _settingsInvertButton;
+        private UIButton _settingsBgmButton;
+        private UIButton _settingsSfxButton;
         private UIButton _settingsResetButton;
 
         private void BuildMenu()
@@ -263,6 +265,11 @@ namespace Pachinko
                 "重置游戏会清空累计得分、可用积分、循环进度、最高记录、\n附魔 / 引爆 / 挡板兑换和校准设置，等同重新开始游戏。",
                 14, Theme.InkSoft, TextAnchor.MiddleCenter, UIFactory.Center, new Vector2(0f, -166f), new Vector2(700f, 50f));
 
+            _settingsBgmButton = UIFactory.TextButton(card, "BgmToggle", "音乐 BGM：开", UIFactory.Center, UIFactory.Center,
+                new Vector2(-168f, -242f), new Vector2(300f, 58f), Theme.Teal, Theme.Cream, 19, OnBgmToggleClicked, 18);
+            _settingsSfxButton = UIFactory.TextButton(card, "SfxToggle", "音效 SFX：开", UIFactory.Center, UIFactory.Center,
+                new Vector2(168f, -242f), new Vector2(300f, 58f), Theme.Teal, Theme.Cream, 19, OnSfxToggleClicked, 18);
+
             UIFactory.TextButton(card, "Close", "关闭", UIFactory.BottomCenter, UIFactory.BottomCenter,
                 new Vector2(0f, 46f), new Vector2(300f, 72f), Theme.PanelLight, Theme.Cream, 24, HideSettings, 22);
 
@@ -278,6 +285,14 @@ namespace Pachinko
                 ? "把手机放在你习惯的握持角度，点击“校准水平”，该姿态就会成为新的零点。建议每次更换握持方式后重新校准。"
                 : "电脑或没有加速度计的设备会自动使用键盘 A/D、方向键，或按住屏幕左右半屏来控制倾斜。";
             _settingsInvertButton.SetText($"左右反转：{(_tilt != null && _tilt.Inverted ? "开" : "关")}");
+            if (_settingsBgmButton != null)
+            {
+                _settingsBgmButton.SetText($"音乐 BGM：{(AudioManager.BgmEnabled ? "开" : "关")}");
+            }
+            if (_settingsSfxButton != null)
+            {
+                _settingsSfxButton.SetText($"音效 SFX：{(AudioManager.SfxEnabled ? "开" : "关")}");
+            }
             _settingsBestText.text =
                 $"第 {_game.LoopIndex} 循环 · 最高循环 {_game.Score.BestLoopScore:N0} · 最高齐射 {_game.Score.BestVolleyScore:N0}\n" +
                 $"累计 {_game.Score.TotalScore:N0} / {_game.GoalScore:N0} · 可用积分 {_game.Score.Credits:N0}";
@@ -300,6 +315,22 @@ namespace Pachinko
             bool inverted = _tilt.ToggleInvert();
             ShowToast(inverted ? "倾斜方向已反转" : "倾斜方向已恢复默认");
             RefreshSettings();
+        }
+
+        private void OnBgmToggleClicked()
+        {
+            AudioManager.SetBgmEnabled(!AudioManager.BgmEnabled);
+            RefreshSettings();
+            ShowToast(AudioManager.BgmEnabled ? "背景音乐已开启" : "背景音乐已关闭");
+        }
+
+        private void OnSfxToggleClicked()
+        {
+            bool enable = !AudioManager.SfxEnabled;
+            AudioManager.SetSfxEnabled(enable);
+            if (enable) AudioManager.Play("ui_click");
+            RefreshSettings();
+            ShowToast(enable ? "音效已开启" : "音效已关闭");
         }
 
         private void OnResetClicked()

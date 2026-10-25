@@ -45,6 +45,10 @@ namespace Pachinko
             }
 
             Debug.Log($"[Bootstrap] 配置来源：{source}");
+
+            // 音频系统在 UI 创建前初始化，并跨场景保留（重置存档重载场景后继续使用同一实例）。
+            AudioManager.EnsureExists();
+
             if (HasCommandLineFlag("-fresh-save"))
             {
                 SaveSystem.Delete();

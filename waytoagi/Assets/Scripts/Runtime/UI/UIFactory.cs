@@ -186,7 +186,11 @@ namespace Pachinko
             colors.disabledColor = new Color(1f, 1f, 1f, 0.82f);
             colors.fadeDuration = 0.08f;
             button.colors = colors;
-            if (onClick != null) button.onClick.AddListener(() => onClick());
+            button.onClick.AddListener(() =>
+            {
+                AudioManager.Play("ui_click");
+                onClick?.Invoke();
+            });
 
             var text = Label(root, "Label", label, fontSize, textColor, TextAnchor.MiddleCenter, Center, Vector2.zero, size - new Vector2(10, 6), true);
             return new UIButton

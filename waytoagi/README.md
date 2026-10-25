@@ -102,15 +102,43 @@
 | 设置 / 校准 | 右上角「设置」 | 同左 |
 | 关闭兑换 | 「完成兑换」按钮或 `Esc` | 同左 |
 
+## 音乐与音效
+
+音频由 `AudioManager` 单例统一播放，业务脚本只调用 `AudioManager.Play(id)` / `PlayBgm(id)`，不持有 `AudioSource`，也不直接调用 `PlayOneShot`。
+
+| 事件 | 音效 ID |
+| --- | --- |
+| 弹珠落入奖励洞 | `score_base` + `combo_01`～`combo_05`（按同洞连击等级同时播放） |
+| 推杆发射 | `launch` |
+| 撞钉 / 撞挡板 | `hit_peg` / `hit_baffle` |
+| 引爆 | `explode` |
+| 循环未达标 / 百万通关 | `fail` / `win` |
+| 按钮点击 / 兑换成功 | `ui_click` / `ui_unlock` |
+| 主菜单 / 玩法 / 兑换 BGM | `menu_loop` / `main_loop` / `shop_loop` |
+
+- **文件位置**：`Assets/Resources/Audio/SFX` 与 `Assets/Resources/Audio/Music`。Unity 需要通过 `Resources` 或直接引用才能把音频可靠打进包内，因此 17 个文件从交付目录 `Assets/Audio` 移到了 `Resources`；文件名与交付标准完全一致，原交付说明仍保留在 `Assets/Audio/弹珠机音效交付标准.md`。
+- **配置**：`Assets/StreamingAssets/audio_config.json`，并镜像到 `Assets/Resources/Config/audio_config.json`。改音量、pitch、并发、优先级、淡入淡出只改配置，不改代码。
+- **导入设置**：音效为 `Decompress On Load` + `Preload Audio Data` + `Vorbis`；BGM 为 `Streaming`、不预加载。
+- **播放规则**：全部 2D（`Spatial Blend = 0`）；同一音效在最小间隔内重复触发直接丢弃；撞钉最多 4 路、撞挡板最多 2 路；对象池满时高优先级音效抢占低优先级。
+- **缺失文件**：静默跳过，控制台输出 `[AudioManager] 缺少音频文件：<文件名>`，并汇总缺失清单，不中断游戏。
+- **开关**：设置页新增「音乐 BGM / 音效 SFX」两个开关，状态写入 PlayerPrefs，重启游戏后保留。
+- **音量组**：Master / BGM / SFX 三个逻辑组由配置的 `masterVolumeDb`、`bgmGroupVolumeDb`、`sfxGroupVolumeDb` 控制。BGM 每条配置本身已比 SFX 低约 10 dB，默认组增益为 0，避免重复衰减；需要整体再压低 BGM 时把 `bgmGroupVolumeDb` 改成 `-10` 即可。
+
 ## 工程结构
 
 ```text
 Assets/
+  Audio/
+    弹珠机音效交付标准.md     音频外包规格与电平表
+    README.md                 运行时文件位置说明
   Editor/
     MvpSceneBuilder.cs       场景生成 / 数值自检入口 / Windows 与 Android 打包
-    MvpSelfTest.cs           V3 数值、计分、循环、兑换、存档自检
+    MvpSelfTest.cs           V3 数值、计分、循环、兑换、存档、音频配置自检
   Scenes/Main.unity
   Scripts/Runtime/
+    Audio/
+      AudioConfig.cs          音频配置结构、StreamingAssets / Resources 加载
+      AudioManager.cs         音效并发与优先级、BGM 淡入淡出、全局开关
     Config/
       GameConfig.cs          物理、经济、循环、引爆、挡板、附魔与洞口配置
     Core/
@@ -139,8 +167,16 @@ Assets/
     DebugTools/
       RuntimeDiagnostics.cs  -autoplay 自动验收与截图
       GatePhysicsProbe.cs    -gate-test 闸门物理验收
-  StreamingAssets/game_config.json
-  Resources/Config/game_config.json
+  StreamingAssets/
+    game_config.json
+    audio_config.json
+  Resources/
+    Config/
+      game_config.json
+      audio_config.json
+    Audio/
+      SFX/                   14 个音效
+      Music/                 3 首 BGM
 Docs/
   验收记录.md
 操作说明.md
@@ -222,7 +258,7 @@ Unity.exe -batchmode -nographics -projectPath "D:\unity_projects\WayToAGI\waytoa
 - 命令行 Android 构建：`PachinkoEditor.MvpSceneBuilder.RunBuildAndroidBatch`
 - Windows 包：`Builds/Windows/PachinkoMVP.exe`
 
-> 项目已在 Unity 6000.3.8f1 中打开并完成脚本编译（最新一次编译无 `error CS`）；V3 数值自检尚未运行，Android APK 因缺少 OpenJDK / SDK / NDK 尚未构建，真机手感仍需复跑。
+> 项目已在 Unity 6000.3.8f1 中打开并完成脚本编译（最新一次编译无 `error CS`），新的 `AudioManager`、音频配置与自检代码均已编译。音频静态检查已通过：17/17 文件存在、配置两份一致、SFX / BGM 导入设置符合交付标准、业务脚本未直接持有 `AudioSource`。V3 数值自检与音频试听尚未运行，Android APK 因缺少 OpenJDK / SDK / NDK 尚未构建。
 
 ## V2 已移除的系统
 
@@ -244,4 +280,6 @@ Unity.exe -batchmode -nographics -projectPath "D:\unity_projects\WayToAGI\waytoa
 - Android 应用图标尚未配置，构建使用 Unity 默认图标。
 - 真实 Android 加速度计方向与校准尚未实测。
 - 引爆推力与挡板手感需要真机调参。
-- 暂无音效；`弹珠机音效交付标准.md` 是音效外包说明。
+- 17 个音频文件与播放逻辑已接入，但尚未实际试听验证；落洞 / 连击叠音、撞钉并发、BGM 切换与设置开关需要在编辑器或真机跑一遍。
+- 没有创建 `AudioMixer.mixer` 资产：Master / BGM / SFX 三组由 `AudioManager` 按配置以源码增益实现并统一管理；若后续需要接 DSP 效果或把混音暴露给音频设计师，再补 `.mixer`。
+- 音频文件放在 `Resources` 下会整体打进包体，当前 17 个文件约 7.7 MB；若包体吃紧，可改为 Addressables 或按需加载。

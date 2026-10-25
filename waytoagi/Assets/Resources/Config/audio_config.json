@@ -1,0 +1,27 @@
+{
+  "masterVolumeDb": 0.0,
+  "bgmGroupVolumeDb": 0.0,
+  "sfxGroupVolumeDb": 0.0,
+  "voicePoolSize": 16,
+  "sfx": [
+    { "id": "score_base",  "file": "sfx_feedback_score_base.mp3",  "volumeDb": -2, "pitchMin": 0.97, "pitchMax": 1.03, "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 8 },
+    { "id": "combo_01",    "file": "sfx_feedback_combo_01.mp3",    "volumeDb": -2, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 8 },
+    { "id": "combo_02",    "file": "sfx_feedback_combo_02.mp3",    "volumeDb": -2, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 8 },
+    { "id": "combo_03",    "file": "sfx_feedback_combo_03.mp3",    "volumeDb": -2, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 8 },
+    { "id": "combo_04",    "file": "sfx_feedback_combo_04.mp3",    "volumeDb": -2, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 8 },
+    { "id": "combo_05",    "file": "sfx_feedback_combo_05.mp3",    "volumeDb": -2, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 8 },
+    { "id": "launch",      "file": "sfx_gameplay_launch.mp3",      "volumeDb": -3, "pitchMin": 0.98, "pitchMax": 1.02, "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 6 },
+    { "id": "hit_peg",     "file": "sfx_gameplay_hit_peg.mp3",     "volumeDb": -8, "pitchMin": 0.95, "pitchMax": 1.05, "maxConcurrent": 4, "minIntervalMs": 40, "priority": 4 },
+    { "id": "hit_baffle",  "file": "sfx_gameplay_hit_baffle.mp3",  "volumeDb": -6, "pitchMin": 0.95, "pitchMax": 1.05, "maxConcurrent": 2, "minIntervalMs": 40, "priority": 5 },
+    { "id": "explode",     "file": "sfx_gameplay_explode.mp3",     "volumeDb": -1, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 10 },
+    { "id": "ui_click",    "file": "sfx_ui_click.mp3",             "volumeDb": -6, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 60, "priority": 3 },
+    { "id": "ui_unlock",   "file": "sfx_ui_unlock.mp3",            "volumeDb": -2, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 7 },
+    { "id": "fail",        "file": "sfx_feedback_fail.mp3",        "volumeDb": -3, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 9 },
+    { "id": "win",         "file": "sfx_feedback_win.mp3",         "volumeDb": -1, "pitchMin": 1.0,  "pitchMax": 1.0,  "maxConcurrent": 1, "minIntervalMs": 0,  "priority": 10 }
+  ],
+  "bgm": [
+    { "id": "main_loop", "file": "music_main_loop.mp3", "volumeDb": -12, "loop": true, "fadeInMs": 300, "fadeOutMs": 500 },
+    { "id": "menu_loop", "file": "music_menu_loop.mp3", "volumeDb": -12, "loop": true, "fadeInMs": 400, "fadeOutMs": 400 },
+    { "id": "shop_loop", "file": "music_shop_loop.mp3", "volumeDb": -14, "loop": true, "fadeInMs": 400, "fadeOutMs": 300 }
+  ]
+}
